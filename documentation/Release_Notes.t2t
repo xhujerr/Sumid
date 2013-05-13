@@ -1,0 +1,411 @@
+Sumid Release notes
+Roman Hujer
+%%mtime(%d/%m/%Y)
+
+
+%%toc
+
+
+== Changes in Sumid version: 0.26 ==
+Finalized: 07.04.2012
+
+- Hydra promoted to thread manager.
+- Created class AbstractProducer and modified classes for concrete producers.
+- subprocess.check_output is new in Python 2.7 (Used in miscutil.Debug.get_open_fds()). But maybe isn't used at all.
+- Final testing done in Python 2.7 , but shall be working in 2.6 as well.
+
+- New items in todo list: 42
+- Items removed from todo list: 31
+- Open items in todo list in total: 84
+
+
+=== From Todo list: ===
+- 060: Split class LinklistAdaptor to LinklistAdaptor and LinklistParser
+- 092: Do not load linklist in constructor. It reduces universal usability. E.g. hard to use parseLine(self,line).
+- 096: Consider usage of urlparse module ( http://docs.python.org/library/urlparse.html#module-urlparse ). It doesn't do exactly what I need.
+     - linklist.SmartURL inherited from urlparse.ResultMixin.
+     - Other changes described in 226.
+- 148: Debug.__init__() (because it is child of Shared) overrides everything in settings what was done after Settings.__init__()
+- 163: Rewrite linklist processing. Especially linklist.LinklistAdaptor.parseLine()
+     - Well I tried. But linklist.TextLinklistParser.parse2SmartURL() doesn't look much better.
+- 174: 1M: Allow also more threads for CompTreeProducer.
+- 176: Split CompTreeProcessor.run() into producer and processor parts.
+- 177: Look if there is in Python predefined class for url, which could catch malformed urls. (JAVA: java.net.URL; URL url; catch(MalformedURLException e)
+     - http://docs.python.org/library/urlparse.html
+     - http://www.egenix.com/products/python/mxBase/mxURL/
+- 190: 1M: Comptree should receive the logger from thread => each thread has its own log file.
+        Problem is that comptree doesn't know anything about threading, so it doesn't know into which file to write.
+     - A: need to change signature of constructors of NodeProxy, Leaf Proxy and DistFile.
+     - B: Also needed fight printHeader somehow.
+     - B1: Hand over logger as a parameter.
+     - B2: Replace printHeader by a regular call of logger.
+     - C: Same change will be required for LinklistAdaptor and CounterManager.
+     - D: Something kinky: e.g. Create the messages in comptree, but let a producer to emit it.
+     - In the end solved in miscutil module by Debug.ThreadAwareLogger.
+- 192: Try some primitive implementation of bag of words in linklist module. (Must include 207)
+     - Select set of characters which would tear url in words.
+     - Count frequency of all words.
+     - Try to do two bags, with domain and without domain.
+     - replaced by TODO 235
+     - Implement work in sips? Howto accumulate the results?
+         - Just do one sip in one file. Next sip in next file and then merge them.
+- 202: 1M: Thread crash protection: Hydra should restart a thread if there is a queue of inputs for this thread. 
+     - Or maybe Hydra should start threads if they're needed (=input queue is long enough) and let them end when they're not.
+     - Can't be based on self.__class__.running() because on crash it didn't decrease this number. See todo 196.
+     - Hydra.rejuvernateThreads() solves the issue.
+- 204: Bug: Fix writing into logs created next days.
+- 205: Not fully transfered code to unified settings:
+     - if not(os.path.exists(self.settings.get("log","logDir"))):os.makedirs(self.settings.get("log","logDir"))
+- 206: Separator safe writing url in counters.csv (quoted string).
+- 207: Design a Linklist class.
+    - It could load a linklist file from disk.
+      - Left in FilesAdaptor.
+    - It could supply one or sip of processed urls.
+      - One is enough.
+    - It uses url class.
+    - Consider to bypass FilesAdaptor, coz it cause more troubles than it solves. 
+      - Kept as it was.
+    - Should also include 163, 092, 096
+    - linklist has a method loadNext() which returns either url instance or None when at the end of the file => no special eof check required.
+      - In addition initiated split to LinklistAdaptor TextLinklistParser.
+- 211: Bug: FilesAdaptor.loadPartOfAFile() will overwrite emptyFileFlag when two files read simultenously.
+- 212: Hydra should rejuvernate threads after an exception in abstract producer catched.
+- 213: Fix the first line of counters.csv
+- 217: InitializeLoggers: with TimedRotatingFileHandler maxBytes doesn't work.
+     - possible to subclass threading.handlers.TimedRotatingFileHandler, 
+       override the method shouldRollover() and tweak it with RotatingFileHandler.shouldRollover()
+- 222: Calling Hydra.measureHWResources() causes an exception which takes down the counterSupervisor()
+     - guppy doesn't work in Python 2.7
+       - added exception catching
+       - found guppy which works with 2.7
+- 225: Design a SmartURL class:
+     - link has basically two forms: splitted and composed
+     - link has a seed
+     - on request provides splitted link or onestring link (different method name - same object)
+     - url has a field for spc symbol
+     - has methods isAbsolute, isRelative
+- 226: SmartURL class future improvements:
+     - Url class could verify syntax and parse itself (by urlparse library). Solves also 096.
+     - http://docs.python.org/library/urlparse.html    
+     - Url class should be able to verify itself (in both compact and splitted form) (method isSplittedLink())
+     - Another inspiration: http://www.egenix.com/products/python/mxBase/mxURL/ 
+       - There's not much to verify. And what is, is verified in SmartURL constructor.
+- 228: SmartURL: Make fuctional properties from ResultMixin: username, password, hostname, port. Required: self.netloc.
+- 231: Logging in MT env causes error:
+```
+    Traceback (most recent call last):
+      File "/usr/lib/python2.7/logging/handlers.py", line 77, in emit
+        if self.shouldRollover(record):
+      File "/media/KINGSTON/Sumid/src/miscutil.py", line 122, in shouldRollover
+        self.stream.seek(0, 2)  #due to non-posix-compliant Windows feature
+    ValueError: I/O operation on closed file
+    Logged from file sumid.py, line 508
+```  
+
+    This points to line in miscutil.EnhancedRotatingFileHandler.shouldRollover:
+    self.stream.seek(0, 2)
+    (While before is already check if self.stream is None)
+    
+    The issue is also discussed here: 
+    http://bugs.python.org/issue6333
+    
+    Here Vinay Sajip suggests that issue is caused by not using thread.join():
+    http://bytes.com/topic/python/answers/852437-multiple-threads-logging-valueerror-i-o-operation-closedfile
+    "You should be doing a join for each of the threads
+    spawned in the main thread, as otherwise the main thread will exit
+    after the for loop and cause atexit processing to be done (which
+    causes logging handlers to be closed)."
+
+    Fixing this needs costly change to Sumid as its threading works on different basis.
+    
+    Some clues to thread.join()
+    http://linuxgazette.net/107/pai.html
+      - solved by hydra.joinProducers()
+- 234: If TextLinklistParser.next() returns None. There's no way to find-out if it's just empty line in linklist or EOF.
+
+
+=== Deprecated: ===
+- 037: add switches for settings
+     - Afaik solved with usage of argparse.
+- 050: create possibility to log 3,4 levels to file -- and also log 1,2 in stdout
+     - Deprecated by loggers.
+- 144: RegrTst: Bug: limitOperationPerlink doesn't apply to NodeProxy (for leafproxy it does work). -- Actually maybe it works. See 157.
+     - Probably solved in 157.
+- 167: Bug: CounterSupervisor.run() gets stuck when all results are processed and flag set in aCondition.wait(). Workaround: wait max timeWaitCounterSupervisor seconds.
+     - Workaround actepted as a solution.
+- 196: If something causes an exception in a thread, tread counter doesn't work. (Thread count is not decremented.)
+     - All exceptions are catched in AbstractProducer.run(). So the producer thread cannot end unexpeted.
+- 229: Ran into the problems with settings/debug.
+     - Shall it really be a singleton?
+     - Every thread needs own logger - which is maintained by debug.
+     - So each thread needs own debug. But this change will have brutal impact to whole program.
+       - Solved with ThreadAwareLogger.
+
+
+=== Testing: ===
+- unittest_bow.py: 9 tests - OK
+- unittest_comptree.py: 5 tests - OK
+- unittest_miscutil.py: 13 tests - FAILED (errors=1)
+  - ERROR: test_initializeLoggers_hitLogger (__main__.DebugTest), Verify if parameters of hitLogger were loaded correctly. - problem with file size limit.
+- unittest_sumid.py: 64 tests - OK
+- test_HydraStartProducers: Gets stuck - probably in joining.
+- test_HydraCheckThreads: Gets stuck 
+- test_Hydra_rejuvernateThreads_shallNotContinue: Fails
+- test_Hydra_rejuvernateThreads_shallRejuvernate: Fails
+
+- wc -l bow.py comptree.py linklist.py miscutil.py settings.py sls.py sumid.py
+- 4062 total
+- wc -l `ls unit*py`
+- 2954 total
+
+
+== Changes in Sumid version: 0.25 ==
+
+Finalized: 10.12.2010
+
+- In Python 2.5 Thread doesn't have attribute name. Need to use getName() instead.
+
+- Rewired sumid.__main__() - linklist is now loaded in parts (with configurable size) each part is fully processed before another is loaded. + Threading !!
+- Removed comptree.LeafProxy.oldDownload.
+- miscutil.Settings.parseValue incorporated in miscutil.EnhancedConfig
+- DistantFile.safeOpen added: status=517 - httplib.BadStatusLine, status=516 - Different content, status=515 - Distant file is empty.
+- Run in large scale:: Test duration: 110 h, Trees processed: 2529, TPD: 552, Hits: 152855 (see performance.test.20101008.results.txt for more)
+- Regression testing of sls.py. After a hack to pydigg.py on line 998 does work.
+
+- New items in todo list: 37
+- Items removed from todo list: 43
+- Open items in todo list in total: 75
+
+
+=== From Todo list: ===
+
+035: do spc output file for loging wrong downloaded galls (or galls already in history - not downloading)
+	 -- solved with missLoger
+041: remove safety break after 25 downloaded items per collection
+     -- solved in 142 - made configurable.
+045: implement Settings.loadFromParams and Settings.loadFromFile
+	 -- not sure about purpose of loadFromFile, but loadFromParams was implemented as core issue in 025
+083: All logging should be done via standard python logger. At least the new log files. ( http://docs.python.org/library/logging.html ).
+     -- replaced by 164 and 165
+093: Parsing commandline options via getopt - Parser for command line options ( http://docs.python.org/library/getopt.html#module-getopt )
+	 -- Solved with argparse module, which replaces getopt for 2.7. Argparse source distributed with Sumid for older python.      
+106: Replace content of miscutil.Settins.miscPath() with loggers.
+107: Replace sumid.files.write(files.cleanLinklist,linklist.links) with logger call in LinklistAdaptor.load(). Line 54.
+112: Rewrite FilesAdaptor.writeFile() with usage of os.path.split()
+119: FactoryMethod uses syntax deprecated in Python 2.3. The apply built-in function. apply(function, args[, keywords]) could be replaced with function(*args, **keywords). See http://docs.python.org/library/functions.html .
+120: Bug: Some exception arises in linklist.LinklistAdaptor.isValidUrl: Url validation is not implemented yet
+     -- it is because logger.debug excepts string and I feeding it with splitted link which is list of strings.
+     -- it happens when I try to log list thru logger - bypassed but not solved. 
+     -- Solved: convert parameter to string via str() builtin function.
+122: Measure duration of a link-tree download and compare it with sum of durations of urlopen.
+     -- The result of measurement is not what I expected. Sometimes the difference is quite big, sometimes tiny.
+     -- I guess that the time mesurement is blured by multithreading. But I dunno how.
+136: 1M: Clear linklist is quite big - solve thru loggers rotatingFileHandler. (Logging clear linklist could be turned off.)
+137: 1M: Extremely memory consuming. All trees are created in memory at once. Maybe add a resources occupation logging (eg. 10MB of ram was occupied).
+         -- Sumid 1M (after 8 hours): 172 - phys; 356 - swp; 220 - swp free
+         -- Sumid 1M (after 18 hours): 182 - phys; 410 - swp; 166 - swp free
+         -- Sumid 1M (after 34 hours): 155 - phys; 518 - swp; 58 - swp free    
+         -- Sumid 1M (after 60 hours): 220 - phys; 625 - swp; 0 - swp free - still didn't crash due to insufficient of memory.
+         -- Sumid 1M (after 60 hours): 220 - phys; 722 - swp; 32 - swp free
+         -- Sumid 1M (after 72 hours): 221 - phys; 733 - swp; 24 - swp free
+138: 1M: INFO is pretty silent. Could be added a message e.g. 10% of linklist processed. (Optional "logProgress=True/False".)
+		 -- Solved with logging TPM in INFO log level. 
+140: Better sorting of logged results
+     -- Log of links without pattern found.  
+	-- nopLogger
+     -- Log of links with pattern found -- pattern could be found more times in one link.
+	-- Ignored - covered sufficiently with other logs.
+     -- Log of unsuccessful hit (quite a big file - in theory len(linklist)*limitPerlink = 50M links).
+	-- missLogger
+142: limitOperationPerlink is currently hard-coded in comptree.Component.sibsExtendDecision(). Make it configurable. + Related 041 => Make limiting configurable.
+143: Move workDir and linklist from settings.py to sumid.ini
+147: Parameters loaded as switches - first step: linklistURL, workDir, allowedMIMETypes
+150: Change settings.py to one large dict. Rewrite miscutil.settings.loadFromSumid() with usage of eval(). Remove loadDefaults (merge content into settings.py).
+		-- Changing it into a class RawSettings was simpler and cleaner.
+154: 1M: Content type "text/html; charset=..." has many different charsets. Each has to be configured separately. Write a generalization for Content type "text/html".
+155: What about multithreading. E.g. 10 threads each thread would operate one tree and when finished it'll pop another tree.
+156: Exact fetch check. Has the distant file same address as was requested in open? Configurable (forceExactURL).
+157: Limit hits per tree. Configurable. (Current setting has has (sibsLimit*2)^maxLevels=(50*2)^4=100*10^9 . 100 MiOs is really too much.
+158: Check if content-length of distant file is not 0. Configurable.
+161: Implement http://en.wikipedia.org/wiki/Producer-consumer_problem as high-level linklist/comptree management.
+162: Multithreading: for each tree is created new thread which is not effective. Reuse existing threads with CompTreeProcessor.receiveTree().
+164: Remove all calls of debug.dprint. (This covers half of Todo: 083.) Solves also 033.
+167: Print counters when all threads finished.
+168: Measure usage of system resources: http://www.cyberciti.biz/tips/how-do-i-find-out-linux-cpu-utilization.html
+		- solved with 3rd party utils python-gupy and python-psutil
+169: Count number of trees processed per hour. (Each tree takes different time to handle, but better than nothing.)
+     -- Do it as stated in 172. (Along with TPM). 
+     -- Will be responsibility of CounterSupervisor.
+178: There is some problem in CompTreeProducer.consumeLink(), which makes the thread stuck when acquiring the linksAvailable condition.
+	 -- This was actually caused by Debug.printHeader(). It caused exception and thus killed the thread. 
+	 -- Original problem bypassed by enclosing into protected block.
+	 -- Tracked under 171. 
+181: Separate logger for each thread.
+183: Create dynamic regulation of the thread waiting time. Eg:
+      -- If current queue usage is more than 90 percent prolong time by 3 second. If 70 percent, by 1 second.
+      -- If current queue usage is less than 10 percent shorten time by 3 second. If 30 percent, by 1 second.
+      -- Configurable via thread waiting time table.
+      -- Consider optimal qsize 50 percent.
+186: Add to counters.csv miss reason: Error returned, returned url differs, invalid MIME type, Zero length page.
+187: In counters.csv zero valued counters aren't stated => they shall be in order to keep data in correct columns.
+191: UT: How come that test_loadFromSumid_valuesCorrect() does pass with dictionaries?
+        -- test_loadFromSumid_valuesCorrect() is definively wrong. If RawSettings is empty it pass as well.
+        -- completely rewritten
+194: Terminating counterManager() based on threading.activeCount()>2 doesn't work. Here is a list of active threads: MainThread, WriterThread, CounterSupervisor, ReaderThread, PyDBCommandThread
+		-- counterManager asks Hydra if should terminate.
+
+Reject:
+153: 1M: Links without leaf cause Sumid to freeze. (e.g.: http://www.motorbikecornerblog.com/motorcycle-gear/92-womens-motorcycle-vests/ )
+     -- This is not the cause of the freeze, but consider it anyway.
+     -- Caused by 144
+
+=== Deprecated: ===
+033: find how override print with Debug.dprint()
+     -- With 164 was Debug.dprint() completely eliminated.
+057: miscutil.Settings.miscpath() could be cross dependency. Make sure about its purpose!     
+	 -- miscpath() removed in 025 in favor logger manner cleanLinklist.     
+058: Override name of function print with Debug.dprint(). Solves also 033.
+     -- With 164 was Debug.dprint() completely eliminated.     
+133: Settings from settings shouldn't be used directly from other classes. But thru settings instance. It will harmonize settings.py, settings.ini and swithandler.
+     -- (Solved in 150) Also settings.py could be a single dictionary. Then loading from sumid wouldn't be neccessary. 
+     -- Look in docbook2testlink.miscutil.Settings.loadFromFile() for inspiration. It's not stupid.
+     => Changed to direct access because it is common interface for loadFromSumid() and loadFromParams()
+172: Do regression testing on 1M links with counting trees per hour. If threading really makes Sumid faster or not.
+     -- 024: 2010-07-02 02:07:55,838 - 2010-07-02 05:29:58,145:: allTrees: 018; 3:22:03; 0.0891 TPM
+     -- 024: 2010-07-02 17:22:04,651 - 2010-07-02 19:50:38,954:: allTrees: 051; 2:28:34; 0.3445 TPM
+     -- 025: 2010-08-25 00:39:57,930 - 2010-08-25 02:31:04,158:: wc -l clls.20100825.log: 1584; 1:51:07;  14.2703 TPM
+         -- This result has two flaws:
+         -- allTrees counter was broken, so I estimate based on cll size. Sip was 100 so it shall be +/-100 equal to allTrees
+         -- maxTrialsPerTree was unlimited in 024, in 025 it was 1000
+     = = Threading certainly makes things faster. Certainly not gonna return to unthreaded version.
+     => Make at least one performance test for each version.
+173: 1M: Make the queue cleaner wait until a slot in queue is really freed. (Test with 64 threads very often reports "Queue full".)
+	 -- deprecated by new threading mechanism.
+182: Use adapter pattern for solving the settings problem.
+	 -- Solved without adaptor.
+
+=== Testing: ===
+Regression test against test ran on Jun 27, 2010 (Sumid 024) passed. Linklist: file:///media/KINGSTON/Sumid/linklist/prelinklist24.txt
+No of unit tests passed: 22
+Unittests failed:
+sibsExtendDecision should return false after the sibs limit was reached.
+sibsExtendDecision should return false after the maxTrialsPerTree limit was reached.
+Performance tests:
+2010-10-08: TPM=0.383 (direct), TPM=0.590 (allTrees/duration)
+2010-10-29: TPM=5.177 (direct), TPM=5.531 (allTrees/duration)
+
+
+== Changes in Sumid version: 0.24 ==
+- Used module logger for creating log of successful hits.
+- Used module configParser and created settings.ini
+- Adaptive settings loading.
+- Rewired LeafProxy.download()
+- Started work on SLS as part of todo item 082. Currently digg connector is working. SLS is not managed by Sumid directly, but uses miscutil.
+
+- Run command in plone: python sumid.py > ../results/1M_links/sumid.out 2>&1 &
+
+New items in todo list: 65
+Items removed from todo list: 32
+
+From Todo list:
+030: move allowed from debug to settings
+042: uncomment calling addSibs from NodeProxy.download()
+     This tiny looking note means big difference in whole program. Currently Sumid doesn't with whole tree but just with leafs.
+     Why is this restricted? How did that happen? Long long long ago Sumid wasn't working with sibs concept but simply started from zero.
+     If link had included only digits near to zero, there would be no reason for restriction. But in the real net, links doesn't contain
+     digits near to zero. If link looked like this http://www.somelink.com/fistLevel1000/secondLevel1000/thirdLevel1000.ext tree 
+     with 10^9 nodes will be created just to download one file.
+     Original concept was that processing of link starts from tail, but it is needed with sib concept?  
+     -- Not extensively tested yet (but a few tests ran).
+     -- Limited by option maxLevels.
+     -- Method Component.addSibs() had to be adapted in order to append children to NodeProxy
+049: add writing to fetchlist etc - fetchlist replaced by hitlogger.
+052: error: counting downloaded items is broken - or mabe each file is downloaded multiple times - which is worse.
+     -- solved under 097
+066: Rename comptree.Component.download() to get().
+     -- solved under 098
+071: Rename FilesAdaptor.writeImage()
+073: Remove global variable debug from comptree and miscutil.
+074: Create class for distant file.
+077: Bug: Creating sibs was incorrect for http://ocw.mit.edu/ans7870/18/18.013a/textbook/HTML/tools/tools04.html ... sib for 03 was not created.
+082: Instead of linklist develop alternative connector to external database. E.g.:
+     -- Google connector, Nutch connector, Digg connector, http://delicious.com/, twitter, reddit.com - http://code.reddit.com/wiki/API , Linklist connector - factory design pattern
+     -- Access via webservice
+     -- GoogleSearch SOAP webservice no longer available
+--   Reanalisis to: 124-132
+--   Dig connector(fetcher already implemented.
+087: Extract pattern from being hardcoded - It is pretty important - Should be in config.
+091: miscutil.Debug.__init__: self.hitLogger.setLevel(logging.DEBUG) is hardcoded. But from settings I'll get string, not an constant.
+094: In class miscutil.Debug enrich methods dprint() and printHeader() with alternative write to a file via logging module. The original logging via Debug class will be deprecated in future.
+095: Specific instances of logging module could be members of Shared directly. (Just a link.)
+097: Bug: comptree.NodeProxy.CreateSibs() does create and download duplicate siblings. Solves also 052.
+     -- caused by fixing unknown children in comptree.NodeProxy__init__()
+     -- no idea why was neccessary to fix unknown children
+098: Change the name of comptree.LeafPoxy.download() to something more appropriate. E.g. verifyDistantFile. Beware it is heavily inherited.
+     -- changed to "operation"
+     -- solves also 066
+100: Update interface of sumid.FilesAdaptor.writeFile() in order to bypass teststring. This parameter would be optional. If None, only content is written.      -- Already implemented - test only.
+101: miscutil.Debug.InitializeLoggers - log levels shouldn't be hardwired. 
+109: Move PathStorage back to sumid.py.
+     -- Settings.LoadAdaptive(*args) will get the PathStorage instance among *args. If not Settings.LoadDefaults() will be skipped.
+     -- Makes skipping Settings.Loaddefaults() sense? This is the question without respect to where the PathStorage class is actually defined.
+113: Remove fetchLog and fetchLogPath since the fetchlog was replaced by hitlogger. Maybe look how fetchog was done and take it as inpiration for hitlogger improvement.
+115: Do regression testing: Get an old linklist and process it with 0.22 and with 0.24 and compare results.
+     -- linklist: linklist11-03.txt, sumid24.py vs. sumid22.py
+     -- Same result in sense of downloaded files, the hitlists were not comparable because 022 downloaded each file 3 times even though the adding parent to unknown children was disabled.
+     -- In 022 corrected bug in sibsDecision()
+116: Bug: Debug.dprint() and Debug.printHeader() cause that logger logs the event twice. Applies to main logger too.
+     -- In main logger bypassed by basic config. In hitLogger it is still an issue.
+     -- In sigleton __init__() is called multiple times for one instance. This caused that caused calling initializeLoggers() multiple times and created multiple same loggers with multiple same handlers.
+117: Logging hits should differ for hit from input linklist and for links created by comptree.NodeProxy.addSibs().
+118: Also differ options when a pattern was found, but it wasn't leading to a hit. Counters? Links processed, Links with pattern, Link with pattern with sibs leading to hit.
+     -- hits counter
+     -- pattern found counter
+     -- all trees created counter
+     -- trees with one or less hits (solves 117)
+127: SLS: concrete fetcher: Digg connector (partially solves 082)
+088: Test run on large scale => research with numeric pattern.
+     -- Machine: plone
+     -- Numeric pattern.
+     -- Linklist source: pydigg
+     -- Interrupted after 72 hours. Comptree within a few hours consumed all the memory. Program didn't crash but there were no results as it didn't start NodeProxy.operation()
+
+Reject:
+031: create hiddenMessagesLog.append(message), and uncomment it in debug
+     -- Probably solved with loggers.
+040: check if Debug.getCallerName is correct
+     -- So far it is working well and soon it will be deprecated by Debug.logFormatter.
+099: Refractor: The class comptree.LeafProxy actually should be named DistantFile.
+104: Bug: CreateSibs does create sibs which were already created. Solves also 052.
+     -- duplicate to 097
+108: Bug: Singleton doesn't work. <= loadAdaptive has to be called after creating Debug instance, because Debug.__init__() overwrites it.
+     -- Singleton can't work when the init is overriden, as is in Settings and in Debug. Currently they are not Singletons!
+     -- a) Init could have been decorated in children.
+     -- b) Singleton.__init__() could call Singleton.Initialize() method defined with empty body, which will be redefined in children.
+     -- hehe Singleton doesn't have __init__() but __new__(), the cause is probably somewhere else.
+     -- solution b doesn't work: cls.initialize(): TypeError: unbound method initialize() must be called with Settings instance as first argument (got nothing instead)
+     -- Maybe it is because Singleton actually DOES work!
+114: Bug: only one subtree from prelinklist21-01 is downloaded. This bug was created in 0.24.
+     -- was commented out in input linklist :-)
+
+== Changes in Sumid version: 0.23 ==
+
+- Added class miscutil.SwitchHandler, which will be replaced by getopt or optparse. Never created fully functional version.
+
+From Todo list:
+None
+
+Discouraged:
+061: Discouraged: Figure out structure of linklist in xml
+062: Discouraged: Write parser for xml linklist (it should cooperate with regular parser under rule of factory method.  
+
+== Changes in Sumid version: 0.22 ==
+
+- Rewired LeafProxy.download()
+
+From Todo list:
+053: Broaden focus from images to more file types including renaming of classes and methods. 
+054: File type detection - replace comparing file start with mimetypes.guess_type(). Add setting forceFileType, fileType, downloadUnknownFileType.
+056: Replace rekursiveMKDir(path) with os.makedirs ( 'I/will/show/you/how/deep/the/rabbit/hole/goes' )  
+069: comptree.Component.handlelink() is raising string, which is not acceptable.
+064: Move FactoryMethod to miscutil

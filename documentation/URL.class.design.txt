@@ -1,0 +1,97 @@
+SmartURL design
+===============
+
+constructor has to verify, if the input given might be a url
+- type
+- content (regexp)
+- else: raise ValueError, "Link must be provided! Can't be None or empty."
+
+Examples what could be input param of Url.__init__(URLInString):
+- empty line
+- line with comment at the beginning
+- line with comment in the middle
+- line also could contain another spc symbol
+- url with whitespace
+
+URL regex pattern
+http://www.noah.org/wiki/RegEx_Python#URL_regex_pattern
+According to RFC 1808, the class [!*\(\),] should really be [!*'\(\),], but single quotes are always meta-quoted in HTML files, so if I included the quote I would get extra characters in matches.
+urls = re.findall('http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\(\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+', page)
+
+http://daringfireball.net/2010/07/improved_regex_for_matching_urls
+
+225: Design a SmartURL class:
+     - link has basically two forms: splitted and composed
+     - link has a seed
+     - on request provides splitted link or onestring link (different method name - same object)
+     - url has a field for spc symbol
+     - Url class should be able to match with a mask (Because of robots.txt).
+     - Another inspiration: http://www.egenix.com/products/python/mxBase/mxURL/ 
+
+226: SmartURL class future improvements:
+     - Url class could verify syntax and parse itself (by urlparse library).
+        http://docs.python.org/library/urlparse.html    
+     - Url class should be able to verify itself (in both compact and splitted form) (method isSplittedLink())
+
+Linklist redesign
+=================
+
+TODO 207: Design a Linklist class.
+    - It could load a linklist file from disk.
+    - It could supply one or sip of processed urls.
+    - It uses url class.
+    - Consider to bypass FilesAdaptor, coz it cause more troubles than it solves. 
+    - Should also include 163, 092, 096
+    - linklist has a method loadNext() which returns either url instance or None when at the end of the file => no special eof check required.
+
+
+092: Do not load linklist in constructor. It reduces universal usability. E.g. hard to use parseLine(self,line).
+096: Consider usage of urlparse module ( http://docs.python.org/library/urlparse.html#module-urlparse ). It doesn't do exactly what I need.
+163: Rewrite linklist processing. Especially linklist.LinklistAdaptor.parseLine()
+
+What does linklist do:
+- load n lines
+-- foreach line
+--- stripLine
+--- parseLine
+---- trimSpcSymbols
+---- isValidUrl
+---- handleCommand
+---- discard endslash
+---- write cll
+
+
+## 025 This is awfull mess. Rewrite it in following manner:
+#for line in linklist:
+#    line=line.strip()
+#    line=self.trimSpcSymbols(line)
+#    line=self.handleCommand(command)
+#    line=self.filterDupes()
+#    line=self.isValidUrl(line)
+#    line=self.parseLine(line)
+#    if line and parsedLine: self.links.append(parsedLine)
+#return self.links  
+
+## 026 This is awfull mess. Rewrite it in following manner:
+#for line in linklist:
+#    line=line.strip()
+#    line=self.trimSpcSymbols(line)
+#    line=self.handleCommand(command)
+#    line=self.isDupe()
+#    line=self.isValidUrl(line) => handled by SmartURL
+#    queue.put(line)
+#    if line and parsedLine: self.links.append(parsedLine)
+#return self.links  
+
+- strip must be after trimSpcSymbols (eg. "url #comment" => ["url ","#","comment"]
+
+
+parseToSmartURL
+- Input is one raw line from linklist.
+- Output is SmartURL instance.
+--	SPC part is trimmed
+--	URL part is striped
+--	If url string is invalid, exception is thrown (it is the matter of SmartURL)
+--	Skips empty lines or comments. (Returns None for those)
+Output is splitted, valid checked, stripped line without special symbols.
+

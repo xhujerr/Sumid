@@ -1,0 +1,19 @@
+#http://www.kosek.cz/clanky/swn-xml/ar01s15.html
+#http://www.kosek.cz/clanky/swn-xml/ar02s17.html
+http://www.zvon.org/xxl/XPathTutorial/Output/example1.html
+#http://www.kosek.cz/clanky/iweb/02.html
+#2010-06-15 23:59:02,208 | comptree | 205 | distFilL | open | DEBUG | Distant file on address http://www.kosek.cz/clanky/iweb/00.html successfully opened by urllib2.urlopen().
+#2010-06-15 23:59:02,209 | comptree | 238 | distFilL | processInfo | DEBUG | content-type: text/html, content-length: 0, error-code: 200, 
+http://ocw.mit.edu/ans7870/18/18.013a/textbook/HTML/tools/tools08.html
+http://argouml-stats.tigris.org/documentation/manual-0.26/pr01.html # got only one file -- because only one file exists.
+http://argouml-stats.tigris.org/documentation/manual-0.26/ch02.html
+http://www.pasteur.fr/formation/infobio/python/ch03s06.html
+http://code.google.com/intl/cs/apis/ajaxsearch/documentation/ # Just to test what happens when no pattern is found.
+http://www.motorbikecornerblog.com/motorcycle-gear/92-womens-motorcycle-vests/ # This is an issue 154. No leaf in link.
+http://www.nytimes.com/2010/06/15/world/asia/15afghan.html # from 1M
+http://www.raptureforums.com/forum/israel-middle-east-news/36627-middle-ages-haunt-middle-east-says-netanyahu.html # from 1M
+http://www.examiner.com/x-17216-Tampa-Cigar-Examiner~y2010m6d14-Symphony-20-celebrates-20-years-of-PG-cigars # from 1M
+#2010-08-25 00:41:08,282 | comptree | 337 | distFilL | isMIMETypeCorrect | WARNING | Unrecognized file type: text/html;charset=ISO-8859-1
+http://www.fearnet.com/news/photos/b19324_blast_through_this_new_resident_evil.html
+# This was pretty hard link.
+http://artofwheels.wordpress.com/2010/06/14/sierra-xr4x4-1982-1983-1984-1985-1986-1987-1988-1989-1990-1991-1992

@@ -1,0 +1,6 @@
+#http://www.kosek.cz/clanky/swn-xml/ar01s15.html
+#http://www.kosek.cz/clanky/swn-xml/ar02s17.html
+http://www.zvon.org/xxl/XPathTutorial/Output/example1.html
+#http://www.kosek.cz/clanky/iweb/02.html
+http://ocw.mit.edu/ans7870/18/18.013a/textbook/HTML/tools/tools08.html
+#http://argouml-stats.tigris.org/documentation/manual-0.26/pr01.html # got only one file -- because only one file exists.

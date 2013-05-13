@@ -1,0 +1,11 @@
+#http://www.kosek.cz/clanky/swn-xml/ar01s15.html
+#http://www.kosek.cz/clanky/swn-xml/ar02s17.html
+http://www.zvon.org/xxl/XPathTutorial/Output/example1.html
+#http://www.kosek.cz/clanky/iweb/02.html
+#2010-06-15 23:59:02,208 | comptree | 205 | distFilL | open | DEBUG | Distant file on address http://www.kosek.cz/clanky/iweb/00.html successfully opened by urllib2.urlopen().
+#2010-06-15 23:59:02,209 | comptree | 238 | distFilL | processInfo | DEBUG | content-type: text/html, content-length: 0, error-code: 200, 
+http://ocw.mit.edu/ans7870/18/18.013a/textbook/HTML/tools/tools08.html
+http://argouml-stats.tigris.org/documentation/manual-0.26/pr01.html # got only one file -- because only one file exists.
+http://argouml-stats.tigris.org/documentation/manual-0.26/ch02.html
+http://www.pasteur.fr/formation/infobio/python/ch03s06.html
+http://code.google.com/intl/cs/apis/ajaxsearch/documentation/ # Just to test what happens when no pattern is found.

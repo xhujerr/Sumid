@@ -1,0 +1,6 @@
+http://www.zvon.org/xxl/XPathTutorial/Output/example1.html
+http://ocw.mit.edu/ans7870/18/18.013a/textbook/HTML/tools/tools08.html
+http://argouml-stats.tigris.org/documentation/manual-0.26/pr01.html
+http://argouml-stats.tigris.org/documentation/manual-0.26/ch02.html
+http://www.pasteur.fr/formation/infobio/python/ch03s06.html
+http://code.google.com/intl/cs/apis/ajaxsearch/documentation
