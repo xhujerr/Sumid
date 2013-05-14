@@ -1,11 +1,31 @@
 """Unit test for miscutil.py"""
 
-__version__="0.26"
+__version__="0.27"
 
+import sqlite3
+import os
+import mocklegacy
+from mock import Mock
 import unittest
 import miscutil
+from miscutil import FilesAdaptor, FilesAdaptorComplex, CounterManager, Shared, Settings, Debug
 from settings import *
 #import copy
+
+def setUpModule():
+    if not hasattr(Shared,"settings") or not hasattr(Shared,"debug"): #not moduleSetUp: # 026 The condition doesn't work in pyDev coz global vars aren't loaded. 
+        print "Setting up the module."
+        settings=Settings()
+        settings.pathStorage=UnixPathStorageMock()
+        # settings.mainINIFilePath="/media/KINGSTON/Sumid/src/testing.ini" # 026 For future - testing could have other settings.
+        # settings.loadAdaptive("all") # 026 Conflicts with args loaded by unittest.
+        settings.loadAdaptive("INI","sumid")
+        settings.workDir="/home/sumid.results/unittests/"
+        settings.logDir="/home/sumid.results/unittests/"
+        Shared.settings=settings
+        debug=Debug(settings)
+        Shared.debug=debug
+    #moduleSetUp=True  # 026
 
 class DummySettings(miscutil.Settings):
      
@@ -25,6 +45,14 @@ class NonSingleDummySettings(miscutil.Settings):
         # Overriding the Settings constructor in order to no longer be a singleton.
         cls._instance = object.__new__(cls, *args, **kwargs)
         return cls._instance
+
+class UnixPathStorageMock(Mock):
+    
+    def workDir(self):
+        return "/home/sumid.results/unittests"
+    
+    def composeURL(self,splitedURL):
+        return "/".join(splitedURL)
 
 class SettingsTest(unittest.TestCase):
 
@@ -468,17 +496,345 @@ Each thread should have own instance of main logger.
         self.assertEqual(self.dummyDebug.hitLogger.handlers[-1].backupCount,20)
         self.assertEqual(self.dummyDebug.hitLogger.handlers[-1].baseFilename,self.logDir+"/hits.log")# 026 Old datetime inclusion: %s.log"%(miscutil.datetime.datetime.now().strftime("%Y%m%d")))
         self.assertEqual(self.dummyDebug.hitLogger.handlers[-1].level,0)
-        self.assertEqual(self.dummyDebug.hitLogger.handlers[-1].maxBytes,52428800)
+        #self.assertEqual(self.dummyDebug.hitLogger.handlers[-1].maxBytes,52428800) # 027 No longer rotated after maxsize.
         self.assertEqual(self.dummyDebug.hitLogger.handlers[-1].mode,"a")
+
+class FilesAdaptortest(unittest.TestCase):
+    
+    def setUp(self):
+        self.filesAdaptor=FilesAdaptor()       
+        self.filesAdaptor.settings.workDir="/home/sumid.results/unittests/"
+        self.filesAdaptor.settings.logDir="/home/sumid.results/unittests/"
+    
+    def tearDown(self):
+        pass
+    
+    def test_initializeMagicFile(self):    
+        """ Correct magic file shall be imported. """
+        if os.path.exists("/usr/share/pyshared/magicgit.py"):
+            self.assertTrue(hasattr(self.filesAdaptor,"magicgit"))
+            self.assertEqual(self.filesAdaptor.magicType, "magicgit")
+        elif os.path.exists("/usr/share/pyshared/magic.py"):
+            self.assertTrue(hasattr(self.filesAdaptor,"magic"))
+            self.assertEqual(self.filesAdaptor.magicType, "magic")
+                        
+    def test_writeFile(self): 
+        """ Files adaptor writes a file based on url given into workDir/netloc/path. """
+        # 027 Will fail in windows.
+        url="http://www.example.com/directory/page007.html"
+        desiredPath="/home/sumid.results/unittests/www.example.com/directory/page007.html"
+        # 027 Remove remains of the previous tests.
+        if os.path.exists(desiredPath):
+            os.remove(desiredPath)
+        # 027 Write and test existence.
+        self.filesAdaptor.writeFile(url,self.filesAdaptor.linklist)
+        self.assertTrue(os.path.exists(desiredPath))
+
+class DBTest(unittest.TestCase):
+    
+    def setUp(self):
+        self.filesAdaptor=FilesAdaptor()       
+        self.filesAdaptorComplex=FilesAdaptorComplex()
+        self.filesAdaptor.settings.workDir="/home/sumid.results/unittests/"
+        self.filesAdaptor.settings.logDir="/home/sumid.results/unittests/"
+        self.filesAdaptorComplex.settings.workDir="/home/sumid.results/unittests/"
+        self.filesAdaptorComplex.settings.logDir="/home/sumid.results/unittests/"        
+        # 027 First remove the old trash from previous tests.
+        if os.path.exists("/home/sumid.results/unittests/sumid.log.sqlite"):
+            os.remove("/home/sumid.results/unittests/sumid.log.sqlite")
+
+
+    def test_connectAndDisconnectDB(self):
+        """ Files adaptor creates db connection and ensures that BOW table exists."""
+        # 026 Shall be also checked for following situations:
+        # 1) Neither file nor BOW table exists.
+        # 2) File exists, but not BOW table.
+        # 3) Both, file and BOW table, exist.
+        self.filesAdaptor.connectDB()
+        self.assertTrue(isinstance(self.filesAdaptor.DBconnection,sqlite3.Connection))
+        tableList=[]
+        self.filesAdaptor.DBcursor.execute("select * from sqlite_master;")
+        for row in self.filesAdaptor.DBcursor:
+            tableList.append(row[2])
+        #print tableList
+        self.assertTrue("BOW" in tableList)
+        self.filesAdaptor.disconnectDB()
+        self.assertRaises(sqlite3.dbapi2.ProgrammingError,self.filesAdaptor.DBcursor.execute,"select * from sqlite_master;")
+    
+    def test_connectAndDisconnectComplexDB(self):
+        """ Files adaptor creates db connection and ensures that BOW table exists."""
+        # 026 Shall be also checked for following situations:
+        # 1) Neither file nor BOW table exists.
+        # 2) File exists, but not BOW table.
+        # 3) Both, file and BOW table, exist.
+        self.filesAdaptorComplex.connectDB()
+        self.assertTrue(isinstance(self.filesAdaptorComplex.DBconnection,sqlite3.Connection))
+        tableList=[]
+        self.filesAdaptorComplex.DBcursor.execute("select * from sqlite_master;")
+        for row in self.filesAdaptorComplex.DBcursor:
+            tableList.append(row[2])
+        #print tableList
+        self.assertTrue("BOW" in tableList)
+        self.filesAdaptorComplex.disconnectDB()
+        self.assertRaises(sqlite3.dbapi2.ProgrammingError,self.filesAdaptorComplex.DBcursor.execute,"select * from sqlite_master;")
                 
+    def test_updateBOW(self):
+        """ When specific counter is sent to update first time, counter gets INSERTed to db. Second time is just updated """
+        self.filesAdaptor.connectDB()
+        counters=CounterManager()
+        counters.title="word"
+        testWords=[["word1", 1],["word2", 2],["word3", 3]]
+        counters.increment(testWords[0][0], testWords[0][1])
+        counters.increment(testWords[1][0], testWords[1][1])
+        counters.increment(testWords[2][0], testWords[2][1])
+        # First update and check of the counters.
+        result=self.filesAdaptor.updateBOW(counters)    
+        self.filesAdaptor.DBcursor.execute("select * from BOW order by word asc;")
+        rowIndex=0
+        for row in self.filesAdaptor.DBcursor:
+            self.assertEqual(row[1],testWords[rowIndex][0])
+            self.assertEqual(row[2],testWords[rowIndex][1])
+            rowIndex+=1
+        self.assertEqual(rowIndex,len(testWords))
+        self.assertEqual(result,len(testWords))
+        # Second update. The counters shall be doubled, while the count of them shall stay same.
+        self.filesAdaptor.updateBOW(counters)    
+        self.filesAdaptor.DBcursor.execute("select * from BOW order by word asc;")
+        rowIndex=0
+        for row in self.filesAdaptor.DBcursor:
+            self.assertEqual(row[1],testWords[rowIndex][0])
+            self.assertEqual(row[2],testWords[rowIndex][1]*2)
+            rowIndex+=1
+        self.assertEqual(rowIndex,len(testWords))
+        self.assertEqual(result,len(testWords))
+        
+    def createSampleComplexTable(self,DBcursor,DBconnection):
+        """ Helper metod to create test bow table. """
+        maxLine=10
+        values=[1,1,1,1,1]
+        # 027 Filling the sample table with values.
+        for cx in range(maxLine):
+            sql="insert into BOW (word,netloc_count,path_count,params_count,query_count,fragment_count) values ('word_%i',?,?,?,?,?);"%(cx+1)
+            args=(values[0],values[1],values[2],values[3],values[4])
+            # 027 Enhancing test for None values in db.
+            if cx==2: args=(values[0],values[1],None,values[3],values[4])
+            DBcursor.execute(sql,args)
+            # 027 Values get incremented. To not make the table that boring.
+            values[cx%len(values)]+=1
+        DBconnection.commit()
+        return True
+    
+    def test_BOW_finalize(self):
+        """ Finalize counts the line sumas correctly.  """
+        self.filesAdaptorComplex.connectDB()
+        self.createSampleComplexTable(self.filesAdaptorComplex.DBcursor,self.filesAdaptorComplex.DBconnection)
+        # 027 Find how many lines are in bow table.
+        sql="select count(bow_id) from BOW;"
+        args=()
+        self.filesAdaptorComplex.DBcursor.execute(sql,args)
+        result = self.filesAdaptorComplex.DBcursor.fetchall()
+        bowLinesCount=result[0][0]
+        # 027 Prepare for test.
+        self.filesAdaptorComplex.finalize()
+        sql="select netloc_count,path_count,params_count,query_count,fragment_count from BOW where bow_id=?;"      
+        sqlTotal="select total_count from BOW where bow_id=?;"    
+        # 027 verifiying line counts line by line for the sample table.
+        for cx in range (bowLinesCount):
+            # 027 The select stays the same, only the bow_id gets changed.
+            args=(cx+1,)
+            self.filesAdaptorComplex.DBcursor.execute(sql,args)
+            dbLine=self.filesAdaptorComplex.DBcursor.fetchall()
+            self.filesAdaptorComplex.DBcursor.execute(sqlTotal,args)
+            result=self.filesAdaptorComplex.DBcursor.fetchall()
+            # 027 The sumation of the current line.
+            lineSuma=0
+            for count in dbLine[0]:
+                if count: lineSuma+=count
+            # 027 #pprint.pprint(dbLine)
+            # 027 #print lineSuma
+            self.assertEqual(result[0][0], lineSuma)
+            
+    def test_getTableLinesCount(self):        
+        """ FA just returns a number of lines in a table """
+        self.filesAdaptorComplex.connectDB()
+        self.createSampleComplexTable(self.filesAdaptorComplex.DBcursor,self.filesAdaptorComplex.DBconnection)
+        result=self.filesAdaptorComplex.getTableLinesCount("BOW","bow_id")
+        self.assertEqual(result, 10)
+            
+    def test_BOW_SumLine(self):
+        """ Files adaptor counts and writes the sum of the line as netloc_count+path_count+params_count+query_count+fragment_count """
+        self.filesAdaptorComplex.connectDB()
+        self.createSampleComplexTable(self.filesAdaptorComplex.DBcursor,self.filesAdaptorComplex.DBconnection)    
+        result=self.filesAdaptorComplex.sumBowLine(5)
+        # 027 Verify that the result is correct.
+        self.assertEqual(result, 9)
+        # 027 Now let's verify if the result got written into db.   
+        # 027 The commit is required to verify the write to db. Usually commit takes place only after all lines are sumed.
+        self.filesAdaptorComplex.DBconnection.commit()
+        sql="select total_count from BOW where bow_id=?"
+        args=(5,)
+        self.filesAdaptorComplex.DBcursor.execute(sql,args)
+        result = self.filesAdaptorComplex.DBcursor.fetchall()
+        self.assertEqual(result[0][0], 9)
+        
+    def test_mergeLines(self):
+        """ FA adds second line to first and deletes the second. """
+        self.filesAdaptorComplex.connectDB()
+        self.createSampleComplexTable(self.filesAdaptorComplex.DBcursor,self.filesAdaptorComplex.DBconnection)    
+        result=self.filesAdaptorComplex.mergeLines(3,5)
+        # 027 The total count is None, coz the table was created again from scratch.
+        expectedList=["word_3", None, 4, 4, 2, 3, 2]
+        # 027 First check correctness of the combination.
+        self.assertEqual(result, expectedList)
+        # 027 Commit in order to check the writed to db.
+        self.filesAdaptorComplex.DBconnection.commit()
+        # 027 Check the writes in db.
+        expectedList2=(3,"word_3", None, 4, 4, 2, 3, 2)
+        #expectedList2.extend(expectedList)
+        # 027 This shall be the combined line.
+        sql="select * from BOW where bow_id=?"
+        args=(3,)
+        self.filesAdaptorComplex.DBcursor.execute(sql,args)
+        result = self.filesAdaptorComplex.DBcursor.fetchall()
+        self.assertEqual(result[0], expectedList2)
+        # 027 The other line shall be deleted.        
+        sql="select * from BOW where bow_id=?"
+        args=(5,)
+        self.filesAdaptorComplex.DBcursor.execute(sql,args)
+        result = self.filesAdaptorComplex.DBcursor.fetchall()
+        self.assertEqual(result, [])        
+   
+    def test_applyStemFilter(self):
+        """ 
+        FA attempts to clean bag of words based on stemization.
+        Only if stemmed form already exists in the bag the lines will be merged.
+        """
+        self.filesAdaptorComplex.connectDB()
+        self.createSampleComplexTable(self.filesAdaptorComplex.DBcursor,self.filesAdaptorComplex.DBconnection)
+        # 027 Prepare some test values in db   
+        sql="update BOW set word=? where bow_id=?"
+        args=("cat",3)
+        self.filesAdaptorComplex.DBcursor.execute(sql,args)
+        args=("dog",5)
+        self.filesAdaptorComplex.DBcursor.execute(sql,args)
+        args=("dogs",6)
+        self.filesAdaptorComplex.DBcursor.execute(sql,args)
+        args=("cats",8)
+        self.filesAdaptorComplex.DBcursor.execute(sql,args)
+        args=("parrots",9)
+        self.filesAdaptorComplex.DBcursor.execute(sql,args)
+        args=("cat",10)
+        self.filesAdaptorComplex.DBcursor.execute(sql,args)
+        self.filesAdaptorComplex.DBconnection.commit()
+        # 027 Now lets run the filter.
+        self.filesAdaptorComplex.applyStemFilter()
+        # 027 Now let's have a look what we got.
+        # 027 Two cats
+        sql="select * from BOW where word=?"
+        args=("cat",)
+        self.filesAdaptorComplex.DBcursor.execute(sql,args)
+        result=self.filesAdaptorComplex.DBcursor.fetchall()
+        self.assertEqual(len(result), 2, "Two 'cat's expected.")
+        # 027 And one more cats
+        sql="select * from BOW where word=?"
+        args=("cats",)
+        self.filesAdaptorComplex.DBcursor.execute(sql,args)
+        result=self.filesAdaptorComplex.DBcursor.fetchall()
+        self.assertEqual(len(result), 1, "One 'cats' expected.")
+        # 027 Those because cats cannot be merged - cat is there twice.        
+        # 027 Just one dog
+        sql="select * from BOW where word=?"
+        args=("dog",)
+        self.filesAdaptorComplex.DBcursor.execute(sql,args)
+        result=self.filesAdaptorComplex.DBcursor.fetchall()
+        self.assertEqual(len(result), 1, "One 'dog' expected.")
+        # 027 No dogs
+        sql="select * from BOW where word=?"
+        args=("dogs",)
+        self.filesAdaptorComplex.DBcursor.execute(sql,args)
+        result=self.filesAdaptorComplex.DBcursor.fetchall()
+        self.assertEqual(len(result), 0, "No 'dogs' expected.")        
+        # 027 And one parrots
+        sql="select * from BOW where word=?"
+        args=("parrots",)
+        self.filesAdaptorComplex.DBcursor.execute(sql,args)
+        result=self.filesAdaptorComplex.DBcursor.fetchall()
+        self.assertEqual(len(result), 1, "One 'parrots' expected.")
+        # 027 But no parrot
+        sql="select * from BOW where word=?"
+        args=("parrot",)
+        self.filesAdaptorComplex.DBcursor.execute(sql,args)
+        result=self.filesAdaptorComplex.DBcursor.fetchall()
+        self.assertEqual(len(result), 0, "No 'parrot' expected.")                
+   
+    """
+    027 This is note for testin stemization:
+    
+$ python
+Python 2.7.3rc2 (default, Apr 22 2012, 22:30:17) 
+[GCC 4.6.3] on linux2
+Type "help", "copyright", "credits" or "license" for more information.
+>>> import sqlite3
+>>> conn=sqlite3.connect("sumid.log.sqlite")
+>>> cur=conn.cursor()
+>>> sql="select * from BOW where bow_id<10"
+>>> args=()
+>>> cur.execute(sql,args)
+<sqlite3.Cursor object at 0x1b54650>
+>>> results=cur.fetchall()
+>>> import pprint
+>>> pprint.pprint(results)
+[(1, u'help', 345),
+ (2, u'Time', 78),
+ (3, u'papel', 3),
+ (4, u'01dollarstore', 1),
+ (5, u'167917099', 1),
+ (6, u'notebooks', 13),
+ (7, u'better', 245),
+ (8, u'0800wallpapers', 1),
+ (9, u'parents', 64)]
+>>> type(results)
+<type 'list'>
+>>> type(results[1]
+... )
+<type 'tuple'>
+>>> sql="select * from BOW where bow_id=10"
+>>> cur.execute(sql,args)
+<sqlite3.Cursor object at 0x1b54650>
+>>> results2=cur.fetchall()
+>>> pprint.pprint(results2)
+[(10, u'deviantart', 18)]
+>>> type(results2)
+<type 'list'>
+>>> type (results2[0])
+<type 'tuple'>
+>>> sql="select * from BOW where bow_id<1"
+>>> cur.execute(sql,args)
+<sqlite3.Cursor object at 0x1b54650>
+>>> results3=cur.fetchall()
+>>> pprint.pprint(results3)
+[]
+>>> type(results3)
+<type 'list'>
+>>> len(results)
+9
+>>> len(results2)
+1
+>>> len(results3)
+0
+    
+    """
+                        
 if __name__ == "__main__":
 
-    settings=miscutil.Settings()
+
+    #settings=miscutil.Settings()
     # settings.mainINIFilePath="/media/KINGSTON/Sumid/src/testing.ini" # 026 For future - testing could have other settings.
-    settings.loadAdaptive("all")
-    miscutil.Shared.settings=settings
-    debug=miscutil.Debug(settings)
-    miscutil.Shared.debug=debug
+    #settings.loadAdaptive("all")
+    #miscutil.Shared.settings=settings
+    #debug=miscutil.Debug(settings)
+    #miscutil.Shared.debug=debug
+    if not hasattr(Shared,"settings") or not hasattr(Shared,"debug"): setUpModule()
 
     unittest.main()   
     

@@ -6,7 +6,7 @@
 # Python unit testing
 # http://agiletesting.blogspot.com/2005/01/python-unit-testing-part-1-unittest.html
 
-__version__="0.25"
+__version__="0.27"
 
 import unittest
 import comptree
@@ -24,11 +24,13 @@ class LoggerMock(Mock): pass
 class DebugDummy(Debug):
     # 026 Not used anymore.
     def __init__(self):
+        super(DebugDummy, self).__init__()
         self.comptreeLogger=LoggerMock() 
     def printHeader(self,*args): pass
     
 class DebugMock(Mock):
     def __init__(self):
+        super(DebugMock, self).__init__()
         self.comptreeLogger=LoggerMock()
     def printHeader(self,*args): pass
 

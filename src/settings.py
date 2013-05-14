@@ -8,22 +8,22 @@
  But better than no configuration at all.
  This file has no other purpose than store configuration. 
 """
-__version__="0.26"
+__version__="0.27"
 
 mainINIFilePath="/media/KINGSTON/Sumid/src/sumid.ini"
 
 class RawSettings(object):
+    # Linklist and workdir were moved to sumid.ini in 0.25.
     saveCleanLinklist=True      # in Sumid 0.08 was named save_sl
     needSort=False              # property of linklist. in Sumid 0.08 was named need_sort
     sortOnly=False              # property of linklist. in Sumid 0.08 was named sort_only
     logFetched=True             # in Sumid 0.08 was named log_fetched
-    previousRange=3             # After <previousRange> of unsuccessful Node Fetching will compTree processing break.
-    maxLevels=1                 # How many levels are allowed for flood searching, counting from leafs. Means how many nested loops will be applied to link, it should be counted from tail.
-   
+    #previousRange=3  # 027 in sumid.ini           # After <previousRange> of unsuccessful Node Fetching will compTree processing break.
+    maxLevels=2                 # How many levels are allowed for flood searching, counting from leafs. Means how many nested loops will be applied to link, it should be counted from tail.
     userAgent="Sumid %s - Experimental research project. (Debian GNU Linux x86_64).  sumid at gmx dot com ."%(__version__)
-    # deprecated 024 #invalidImageMark=['<html>','<!doct','<?xml ','<!-- r','<html ','<!--mc','<head>','<scrip'] # Starting strings of text/html. To determine if file is html or binary. Likely to be obsoleted soon.
     printUris=False		# Tries to download target resource if set to false.
-    linkListSpcSymbols=['@','#'] # Used in linklist cleaning. Everything after special character is NOT link.
+    linkListSpcSymbols=['#','@'] # Used in linklist cleaning. Everything after special character is NOT link.
+    # 027 If @ among spc symbols, password protected resource cannot be fetched.
     minNumberLength=3           # used in PatternAnalyzer for files naming (2.ext is after 10.ext, but 002.ext is before 010.ext)
     
     forceMIMETypes=True # If is set to false, all files will be considered valid. Else only types in allowedMIMETypes.
@@ -89,12 +89,12 @@ class RawSettings(object):
     timeWaitCompTreeProcessor=10 # When CompTreeProcessor is waiting in queue and other thread finishes all trees it has no chance to wake-up and finish.
     timeWaitMainThread=30#600
     timeWaitDefaultThread=2 # Used in abstract producer, when is not known which thread it is.
-    schedulerDelay=30#600 # Time interval when the performance is measured. TPS to be exact.
+    schedulerDelay=600 # Time interval when the performance is measured. TPS to be exact.
     # threadWaitingTimeAdjustmentTable=[[90,-3],[10,+3],[70,-1],[30,+1]] # How waiting time should be adjusted based on queue lenght. That's linear function! y=7.5x-3.75 ; where x is queue occupancy and y is time adjustment in seconds.
     threadWaitingAdjustmentVector=[-7.5,3,75] # The time adjustment sloppiness setting. y=-7.5x+3.75 ; where x is queue occupancy and y is time adjustment in seconds.
     defaultCounters=["treeOperateTime","hits","contentLength","urlopenTime","linearPatternTrees","patternFound","zeroLengthMiss","differentURLMiss","statusResponseMiss","errorResponseMiss"]
 
-    urlWordsSeparators=[',',' ','.','/','-','_','?','+','=']
+    urlWordsSeparators=[',',' ','.','/','-','_','?','+','=','&']
     # urlWordsSeparators other candidates=['+',':','(',')']
     commonWords=["","http:","www","html","com","php","net","org","co","uk","htm","aspx","cfm","asp","au","cgi"]
     # Beware "at", "de", "us" could be country code, but also language code, which is a pattern. Depending on where they're found.
@@ -102,40 +102,5 @@ class RawSettings(object):
     # "info" could be both - pattern or domain.
     bowTempSize=100 # Cache size. How many different counters bow acumulates before it writes it into DB.
     bowWaitTime=10 # How long is bow.BOWUpdater.consume() waiting, if his input queue is empty.
-
+    linklistURLParts=["scheme", "netloc", "path", "params", "query", "fragment"]
     # End of class RawSettings
-    
-"""
-argparseArguments=[
-                   {
-                    "name":"linklistURL",
-                    "dest":"linklistURL",
-                    "default":"~/sumid.linklist.txt",
-                    "required":False,
-                    "help":"Path to linklist. Linklist is the main input of Sumid. It contains all the urls, which gonna be processed."
-                    },
-                   {
-                    "flag1":"-w",
-                    "flag2":"--workDir",
-                    "dest":"workDir",
-                    "default":"~/sumid.results",
-                    "required":False,
-                    "help":"Place on filesystem where the results gonna be stored."
-                    },
-                   {
-                    "flag2":"--allowedMIMETypes",
-                    "dest":"allowedMIMETypes",
-                    "default":"text/html",
-                    "required":False,
-                    "help":"Comma separated list of MIME type, which will be considered as a successful hit."
-                    },
-                   {
-                    "flag2":"--sibsLimit",
-                    "dest":"workDir",
-                    "default":"~/sumid.results",
-                    "required":False,
-                    "help":"Place on filesystem where the results gonna be stored."
-                    }
-                   ]
-                   
-"""

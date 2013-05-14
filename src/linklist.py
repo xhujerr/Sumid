@@ -14,11 +14,12 @@ Version Bookkeeping
     other code, separated by a blank line above and below.
 """
 
-__version__="0.25"
+__version__="0.27"
 
 from miscutil import NotImplementedYetError, Shared, Debug, Settings
 from Queue import Queue
 import urlparse, urllib
+from bz2 import BZ2File # 027 Only because of the check in connectLinklist.
 # 026 Although I actually use urllib2 the needed addinfourl is defined in urllib and imported to urllib2.
 
 class LinklistAdaptor(Shared):
@@ -48,37 +49,8 @@ class LinklistAdaptor(Shared):
         self.linklist=linklist
         self.links=[] # list containing splitted links lists # 026 Making it obsolete by SmartURL.
         self.linksQueue=Queue() # 025 same as "links", but queue type.
-        if linklist: self.load() # fills self.links
+        #if linklist: self.load() # 027 load method removed, coz is not in use since 026.  # fills self.links
         
-
-    def load(self,linklist=None):
-        """
-        Transforms linklist file into tupple of links.
-        Should be part of parser?
-        The name "load" is pobably confusing.
-        """
-        # 026 This method is currently not used anywhere.
-        self.debug.printHeader()
-        if not linklist: linklist=self.linklist
-        for line in linklist:
-            line=line.strip()
-            parsedLine=self.parseLine(line)
-            if line and parsedLine: self.links.append(parsedLine) # line2Link not defined yet
-        return self.links
-        #self.debug.mainLogger.info("Linklist loading complete") # This is no longer true - since I feed linklist by one link.
-        
-        ## 025 This is awfull mess. Rewrite it in following manner:
-        #for line in linklist:
-        #    line=line.strip()
-        #    line=self.trimSpcSymbols(line)
-        #    line=self.handleCommand(command)
-        #    line=self.filterDupes()
-        #    line=self.isValidUrl(line)
-        #    line=self.parseLine(line)
-        #    if line and parsedLine: self.links.append(parsedLine)
-        #return self.links
-        # 026 To be replaced by SmartUrl.
-
     def parse2Queue(self,linklist=None):
         """ Same as load, but result is Queue. Fast and ugly. """
         self.debug.printHeader()
@@ -164,8 +136,8 @@ class LinklistAdaptor(Shared):
         self.logger.debug('Going to return: %s'%(str(toret))) # TODO: Can't log this - toret is a list.
         if toret:
             # When line is a comment empty string is returned. 
-            self.debug.cllLogger.info(self.settings.pathStorage.composeURL(toret))
-        #self.debug.dprint('Going to return: %s'%(toret),4)
+            #self.debug.cllLogger.info(self.settings.pathStorage.composeURL(toret)) # 027 Replaced (Which actually might jeopardize cll).
+            self.debug.cllLogger.info("/".join(toret)) # 027
         return toret
         
     def handleCommand(self, command):
@@ -211,7 +183,9 @@ class LinklistAdaptor(Shared):
         """ Checks if the input is file-like object and connects it to linklist."""
         # 026 Pure adaptor member.
         if not isinstance(LinklistFile,urllib.addinfourl) and not isinstance(LinklistFile, file):
-            raise AttributeError, "Input must be a file-like object."
+            from bz2 import BZ2File # 027 Only because of the check in connectLinklist. 
+            if not isinstance(LinklistFile, BZ2File):
+                raise AttributeError, "Input must be a file-like object."
         self.linklist=LinklistFile
         self.EOF=False
     

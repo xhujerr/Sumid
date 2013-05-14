@@ -1,7 +1,7 @@
 #!/bin/env python
 
 #    SUMID - Script used for mass items downloading
-#    Copyright (C) 2004-2011  Roman Hujer <sumid [at] gmx [dot] com>
+#    Copyright (C) 2004-2012  Roman Hujer <sumid at gmx dot com>
 #
 #    This program is free software: you can redistribute it and/or modify
 #    it under the terms of the GNU General Public License as published by
@@ -18,9 +18,9 @@
 
 __program__="SUMID"
 __programLongName__="Script used for mass items downloading"
-__version__="0.26"
+__version__="0.27"
 __authors__="Roman Hujer <sumid [at] gmx [dot] com>"
-__year__="2004-2011"
+__year__="2004-2012"
 
 greetingPrompt="""
     %s %s - %s 
@@ -135,6 +135,7 @@ todoList=""" Todo list:
 188: 1M: URL could start with https.
 189: 1M: For several urls are in counters more than 100 misses with just 0/1 hits => Limitation for sibsExtendDecision() creating sibs probably doesn't work. 
 193: The config parser wrapped in EnhancedConfigParser is still used by Debug.initializeLoggers()
+        -- eh what's wrong about it?
 195: Change Hydra to Mediator: http://cs.wikipedia.org/wiki/Prost%C5%99edn%C3%ADk_%28n%C3%A1vrhov%C3%BD_vzor%29
 
 
@@ -186,15 +187,6 @@ todoList=""" Todo list:
 233: In sumid module create function BasicInitialization() - from the lines of body till message "Threading hell begin. Creating all queues."
      This function could be shared by sumid, sls and bow.
      -- reconsider: sls and bow shouldn't import sumid. 
-235: Update BOW table with following columns (name, count_netloc, count_path, count_params, count_all)
-     - prerequieres:
-     -- implementing properties: netloc, path, params, query and fragment (226)
-     -- change in FilesAdaptor.updateBOW
-     -- create SmartURL.Words() which separates url per parts.
-     -- In BOW create BOWBuilder class, which create bow for each class.
-     -- The counter name will be hint for filesAdaptor which column to update with the counter. 
-     -- So FilesAdaptor.updateBOW() stays unchanged.
-     -- But FilesAdaptor.connectDB() has to change to know what fashion of table has to be created. 
 237: Enhance all prosumers with **kwargs as demonstrated in bow.AbstractProducer.__init__() and bow.BOWBuilderSimple.custominit()
 238: Merge AbstractProducer from bow into AP in sumid. (requires 237)
 239: Remove parser from BOWUpdaterSimple kwargs. (requires 238)
@@ -215,14 +207,31 @@ todoList=""" Todo list:
     -- (026)at least create separate issues to figure out what means documentation (Release notes, User manual, Configuration manual, Class and methods description).
     -- (026)research automated documentation generation from comments.
 236: cll (counters.csv) will change to sqlite. Each link is in fact seed. Table colums: url, hits, misses, patterns, ?isPaternLinear?, ?isHitLinear?
+
+     Bugs found during coding of version 0.27
+244: Distinct commonWords for a netlock and path.
+246: sls: Create posibility to do weekly / monthly linklists. Configurable. 
+248: printHeader could be a method of logger (ThreadAwareLogger):
+     - printing the name of the function is not neccesary anymore
+     - name of function: how they do it in formatter?
+     - params could be refered as self.dict .. or whatever
+     - the old implementation and the new is not in conflict, coz is attr of another Class.
+249: For bow develop class Filters (& Filter)
+     - Filters can be used from BOW builder to filter certain words from adding to sqlite.
+     - Shall be possible to turn on/off each filter.
+     - Filter 1: commonWords=["","http:","www","html","com","php","net","org","co","uk","htm","aspx","cfm","asp","au","cgi"]
+     - Filter 2: plural vs. singular of words.
+         - Stemming library by Porter http://tartarus.org/~martin/PorterStemmer/ also package python-stemmer
+     - Filter 3: national domains (low importance - is in netlock).
+251: Rewrite SmartURL to be using furl: https://github.com/gruns/furl/     
 """
 
 import os
-import urllib2 # Called in method FactoryMethod.create() .
+import urllib2 # 027 Remove with FA.
 # import comptree # 026 in order to make regrtest easier (renaming units).
-from miscutil import Settings, Debug, Shared, FactoryMethod, NotImplementedYetError, CounterManager, SchedulerManager
+from miscutil import Settings, Debug, Shared, FactoryMethod, CounterManager, SchedulerManager, FilesAdaptor, UnixPathStorage # 027 UnixPathStorage needed in an eval
 from linklist import LinklistAdaptor
-from comptree import NodeProxy, PatternAnalyser
+from comptree import NodeProxy
 import threading
 from Queue import Queue 
 import time
@@ -230,234 +239,6 @@ import time
 from logging import INFO, DEBUG
 #import traceback # 026
 #import sys #026
-import sqlite3
-    
-class FilesAdaptor(Shared):
-    """
-    Cares about opening, closing, reading and writing files.
-    Originally class Logger(Shared) (010?)
-    Must have vars for log files: fetchedLinksList, cleanLinkList, diffLinksList
-    """
-    # Should be reconsidered to just manage collection of file objects (or rather file buffers).
-    # Each file object will have members: contentType{binary|text}, fileName, content, write(), appendText()
-    def __init__(self,pathStorage=None):
-        if pathStorage: self.pathStorage=pathStorage
-        else: self.pathStorage=self.settings.pathStorage
-        #self.pathStorage=pathStorage # this maybe not needed - paths are in settings # Remove this comment (021)
-        # Opening files should be moved to extra method (called here).
-        if not os.path.exists(self.pathStorage.workDir()): os.makedirs(self.pathStorage.workDir())
-        #self.linklist=urllib2.urlopen(self.settings.linklistURL) # 025 todo 143
-        #linklistURL=self.settings.get("files","linklistURL") # 025
-        linklistURL=self.settings.linklistURL
-        self.logger.debug("Path to linklist is currently set to: %s" %(linklistURL))
-        self.linklist=urllib2.urlopen(linklistURL)
-        #self.cleanLinklist=file(self.settings.cleanLinklistPath,'w') # obsoleted in 0.25 by clllogger
-        #self.fetchLog=file(self.settings.fetchLogPath,'w') # obsoleted in 0.24 by hitlogger
-        self.emptyFileFlag={}
-
-    def write(self,aFile,lines):    
-        """
-        This method is meant to write many lines to text file at once.
-        Good is, that isn't needed doing write repeateadly, bad is that, if something crashes
-        nothing gets logged.
-        Currently method accepts string, and also list of strings as lines.
-        Lines currently (021) could be also splitted links, which is going to be discontinued pretty soon.
-        """
-        # Not necessary (comment older than 021 - no idea what does that mean)
-        # Maybe meant to be obsoleted by writeLine and writeLog
-        self.debug.printHeader()
-        for line in lines:
-            if not hasattr(line,'upper'): line=self.settings.pathStorage.composeURL(line)
-            # Really poor way how differ between string and list
-            # Should be rewriten. Lines could contain only array of strings (not array of arrays).
-            aFile.write(line)
-            aFile.write('\n')
-
-    def writeFile(self,fileLink,fileBuffer,testChars=''):
-        """
-        Simply writes file to disk.
-        Currently(021) writes also test string at beginning of file and
-        also tweaks file to be literally sortable same as numerically.
-        If needed also creates needed sub-directories according to link. 
-        """
-        # 026 Unit test should test also urllib file like object aside the real file.
-        # Files adaptor shouldn't care about desired file name. Shouldn't call pattern analyser. It should obtain desired file name as input parameter.
-        #self.debug.printHeader() # Too many times -- need to move to debuglevel=4
-        pattern=PatternAnalyser() # Why each file needs own PatternAnalyser? To correct length. Could be done in comptree leaf when create file buffer.
-        filePath=fileLink.replace('http://','')
-        #splittedFilePath=filePath.split('/') # 025 removed due to Todo 112. Need regression testing.
-        #fileName=splittedFilePath.pop() # 025 removed due to Todo 112. Need regression testing.
-        [fileDir,fileName]=os.path.split(filePath)
-        # number length correction hard-coded for last level only. should be for all processed levels.
-        fileName=pattern.correctNumLength(fileName,self.settings.minNumberLength)
-        #fileDir=self.pathStorage.composePath(splittedFilePath) # Can't be replaced with "/".join() because of windows portability. # 025 removed due to Todo 112. Need regression testing.
-        if not os.path.exists(self.pathStorage.workDir()+'/'+fileDir): os.makedirs(self.pathStorage.workDir()+'/'+fileDir)
-        localFile=file(self.pathStorage.workDir()+'/'+fileDir+'/'+fileName,'wb')
-        localFile.write(testChars)
-        localFile.write(fileBuffer.read())
-        localFile.close()
-
-    def loadPartOfAFile(self,aFile,numberOfLines=None):
-        """ 
-        This method reads specified number of lines from a file.
-        readlines(number) did not work for urllib.
-        026 Then inheritance should be used instead => EnhancedURLopener(URLopener)
-        """
-        result=[]
-        if hasattr(aFile,"name"): name=aFile.name
-        elif hasattr(aFile,"url"): name=aFile.url
-        if not name in self.emptyFileFlag: self.emptyFileFlag[name]=False
-        #tmp=tempfile.TemporaryFile()
-        if not numberOfLines: numberOfLines=self.settings.fileSipSize
-        for lineno in range(numberOfLines):
-            line=aFile.readline()
-            if not line: self.emptyFileFlag[name]=True
-            result.append(line)
-        return result
-    
-    def loadPartOfLinkList(self,numberOfLines=None):
-        """ 
-        This method knows, where the linklist is.
-        That's its only gain against loadPartOfAFile().
-        """
-        # 026 Which is a temporary workaround.
-        # 026 In future this should be responsibility of Linklist class.
-        return self.loadPartOfAFile(self.linklist,numberOfLines)
-
-    def fileProcessed(self,fileInstance):
-        """ Returns True if the fileInstance was FULLY processed by loadPartOfAFile. False otherwise."""
-        if hasattr(fileInstance,"name"): name=fileInstance.name
-        elif hasattr(fileInstance,"url"): name=fileInstance.url
-        if name in self.emptyFileFlag: return self.emptyFileFlag[name]
-        else: return False
-
-    def connectDB(self):
-        """
-        I assume to have one db for everything.
-        Different things will be stored in different tables.
-        """
-        dbFilePath="%s%s%s.sqlite"%(self.settings.logDir,os.sep,self.settings.mainLogFileName)
-        self.DBconnection=sqlite3.connect(dbFilePath, check_same_thread = False) # 026 check_same_thread needed in bow.
-        self.DBcursor=self.DBconnection.cursor()
-        sql="create table if not exists BOW (bow_id INTEGER PRIMARY KEY, word TEXT, count INTEGER);"
-        self.DBcursor.execute(sql)
-    
-    def disconnectDB(self):
-        self.DBconnection.close()
-        
-    def updateBOW(self,counters):
-        """
-        This will update counters in database.
-        It will choose either INSERT OR UPDATE.
-        As input is expected CounterManager instance.
-        Returns number of BOW rows after update. 
-        """
-        for counterName in counters.counters.keys():
-            sql="select * from BOW where word=?;"
-            args=(counterName,)
-            self.DBcursor.execute(sql,args)
-            sqlResult=self.DBcursor.fetchall()
-            if len(sqlResult):
-                currentCount=sqlResult[0][2]
-                sql="update BOW set count=? where word=?"
-                args=(counters.value(counterName)+currentCount,counterName)
-            else:
-                sql="insert into BOW (word, count) values (?,?)"
-                args=(counterName,counters.value(counterName))
-            self.DBcursor.execute(sql,args)
-        self.DBconnection.commit()
-        sql="select count(bow_id) from BOW"
-        args=()
-        self.DBcursor.execute(sql,args)
-        result = self.DBcursor.fetchall()
-        return result[0][0]
-
-class PathStorage(Shared):
-    """
-    Factory method abstract product (instance shouldn't be allowed).
-    Cares about path which are dependent on OS. Also creates directories, when needed.
-    
-    The notImplementedError is in virtual method, the should be overriden by concrete product.
-    It differs from notImplementedYetError, which means that I'm lazy and I haven't implemented it YET.
-    properties: platform, workdir
-    """
-    # Some items from following could be treated as get() of property. 
-    def homeDir(self):       raise NotImplementedError
-    def workDir(self):       raise NotImplementedError #aka savepath
-    def rekursiveMKDir(self):raise NotImplementedError
-    def composePath(self):   raise NotImplementedError
-    def composeURL(self):    raise NotImplementedError
-
-class UnixPathStorage (PathStorage):
-    """
-    Concrete factory method product for OSes marked as unix.
-    
-    Convention: None of paths should be ended by slash or else slashes could be doubled.
-    """
-    
-    def __init__(self):
-        #self.rekursiveMKDir(self.workDir()) # 0.22
-        if not os.path.exists(self.workDir()): os.makedirs(self.workDir())
-        
-    def homeDir(self): return os.environ['HOME']
-    
-    def workDir(self):
-        """ Just says what is working directory. """
-        self.debug.printHeader()
-        #if hasattr(self.settings, "workDir"): toret=self.settings.workDir # 025 todo 143
-        if self.settings.config.has_section("files") and self.settings.config.has_option("files","workDir"):
-            # toret=self.settings.get("files","workDir") 025
-            toret=self.settings.workDir
-        else: toret=os.environ['HOME']+'/xxz'
-        # Also could write workdir back to settings.
-        return toret
-                
-    def composeURL(self,splitedURL):
-        """
-        Collects pieces of splitted url back together.
-        """
-        #Could be replaced by string.join() method.
-        #Also could be merged with method composePath().
-        #Create child of list class with this method. 
-        
-        self.debug.printHeader() 
-        url=''
-        if len(splitedURL)>0:
-            for piece in splitedURL:
-                if not(piece==splitedURL[0]): url+='/'
-                url+=piece
-        self.logger.debug("Composed url is: %s" %(url))
-        return url
-        #return "/".join(splitedURL) #026 This will do the same job. But needs to be tested.
-    
-    def composePath(self,splitedPath):
-        """
-        Puts pieces of filesystem path back together, for each platform differently.
-         
-        Obsoletes misc_path() from Sumid 0.08, but interface differs.
-        """
-        #Could be merged with composeURL.
-        #Replaced by string.join() method in 0.22. Can't be removed entirely because of windows portability.
-        #Can be replaced by os.path.join(path1[, path2[, ...]]) - but need to do this with sequence not just for pair of strings.
-        #Also is possible to do unixlike composePath and then revert slashes to back with os.path.normcase(path).
-
-        self.debug.printHeader()
-        return "/".join(splitedPath)
-
-
-class Win32PathStorage(PathStorage):
-    """
-    Concrete factory method product for OSes marked as win32.
-      
-    Convention: None of paths should be ended by slash or else slashes could be doubled.
-      
-    Not implemented since (010), always there's something more important than porting Sumid to win32.
-    >>> import os 
-    >>> os.environ['HOME'] 
-    'C:\\Documents and Settings\\Administrator' 
-    """
-    def __init__(self):
-        raise NotImplementedYetError
 
 class EnhancedCondition(threading._Condition,Shared):
     "This class enhances the Condition class in order to find out which thread owns the lock."
@@ -536,49 +317,6 @@ class LinklistSupplier(AbstractProducer):
     # 026 inputQueue and inputCondition should be None
 
     running=0
-    # 026 Replaced by Abstract producer.
-    #def __init__(self,hydra,inputQueue,outputQueue,inputCondition,outputCondition):
-    def oldInit(self,threadQueue, linklistInstance, filesAdaptorInstance, linksQueue, linksAvailable, finishFlag):
-        threading.Thread.__init__(self)
-        self.debug.printHeader()
-        self.linklistInstance=linklistInstance
-        self.filesAdaptorInstance=filesAdaptorInstance
-        self.linksAvailable=linksAvailable
-        self.finishFlag=finishFlag
-        self.linksQueue=linksQueue
-        self.threadQueue=threadQueue
-        self.logger=self.debug.enrichMainLogger("LinklistSupplier-%s"%(self.getName()))
-    
-    # 026 Replaced by Abstract producer.
-    def oldRun(self):
-        self.debug.printHeader()
-        self.__class__.running += 1
-        while not self.filesAdaptorInstance.emptyFileFlag:
-            #while self.linklistInstance.linksQueue.qsize()>self.settings.fileSipSize: time.sleep(10)
-            while self.linksQueue.full():
-                self.logger.debug("The linksQueue is full. Waiting %s seconds if other thread takes care about it."%(self.settings.timeWaitLinklistSupplier))
-                self.linksAvailable.acquire()
-                self.linksAvailable.notify() 
-                self.linksAvailable.release()
-                time.sleep(self.settings.timeWaitLinklistSupplier)
-            linksQueueDebugFlag=1 # This flag reduces amount of debug messages generated, when linksQueue is full.
-            waitingTimeAdjustment=self.threadQueue.adjustThreadWaitingTime(self.linksQueue.qsize(),self.linksQueue.maxsize,self.settings.timeWaitLinklistSupplier)
-            if waitingTimeAdjustment: self.settings.timeWaitLinklistSupplier+=waitingTimeAdjustment
-            linesSip=self.filesAdaptorInstance.loadPartOfAFile(self.filesAdaptorInstance.linklist) # Sip like sip a bit of coffee.
-            self.linksAvailable.acquire()
-            self.linklistInstance.parse2Queue(linesSip)
-            while self.linklistInstance.linksQueue.qsize():
-                if self.linksQueue.full() and linksQueueDebugFlag:
-                    self.logger.debug("linksQueue is full. linksQueue.qsize: %i; linklist.qsize: %i"%(self.linksQueue.qsize(),self.linklistInstance.linksQueue.qsize()))
-                    linksQueueDebugFlag=0
-                self.linksQueue.put(self.linklistInstance.linksQueue.get())
-            self.linksAvailable.notify()
-            self.linksAvailable.release()
-            self.logger.debug("linksQueue.qsize: %i ."%(self.linksQueue.qsize()))
-        self.logger.info("LinklistSupplier %s has nothing to do. Ending.linksQueue.qsize: %i; linklistInstance.linksQueue.qsize: %i"%(self.getName(),self.linksQueue.qsize(),self.linklistInstance.linksQueue.qsize()))
-        self.finishFlag.set()
-        self.__class__.running -= 1
-        self.threadQueue.task_done()
 
     def consume(self):
         #linesSip=self.filesAdaptorInstance.loadPartOfAFile(self.filesAdaptorInstance.linklist) # Sip like sip a bit of coffee.
@@ -636,40 +374,6 @@ class LinklistSupplier(AbstractProducer):
 class CompTreeProducer(AbstractProducer):
     
     running=0
-    
-    # 026 Replaced by Abstract producer.
-    #def __init__(self,hydra,inputQueue,outputQueue,inputCondition,outputCondition):
-    def oldInit(self, threadQueue, linksQueue, nodeQueue, linksAvailable, comptreeAvailable, foreignFinishFlag, finishFlag):
-        threading.Thread.__init__(self)
-        self.debug.printHeader()
-        self.foreignFinishFlag=foreignFinishFlag
-        self.finishFlag=finishFlag
-        self.nodeQueue=nodeQueue
-        self.comptreeAvailable=comptreeAvailable
-        self.linksQueue=linksQueue
-        self.linksAvailable=linksAvailable
-        self.threadQueue=threadQueue
-        self.logger=self.debug.enrichMainLogger("CompTreeProducer-%s"%(self.getName()))
-    
-    # 026 Replaced by Abstract producer.
-    def oldRun(self):
-        self.debug.printHeader()
-        self.__class__.running += 1
-        self.logger.debug("Object identifier of nodeQueue is: %s"%(id(self.nodeQueue)))
-        if self.foreignFinishFlag.isSet() and not self.linksQueue.qsize(): 
-            self.logger.error(
-                                        "Premature end: CompTreeProducer. foreignFinishFlag: %s; linksQueue.qsize: %i"
-                                        %(self.foreignFinishFlag.isSet(), self.linksQueue.qsize())
-                                        )
-        while not self.foreignFinishFlag.isSet() or self.linksQueue.qsize():
-            # Consumer part start
-            link=self.consumeLink()
-            # Producer part start
-            self.produceTree(link)
-        if self.foreignFinishFlag.isSet() and not self.linksQueue.qsize(): self.logger.info("CompTreeProducer %s has nothing to do. Ending."%(self.getName()))
-        self.finishFlag.set()
-        self.__class__.running -= 1
-        self.threadQueue.task_done()
     
     # 026 Dropped functionality: Check of the premature end.
     def consume(self):
@@ -732,59 +436,7 @@ class CompTreeProducer(AbstractProducer):
 class CompTreeProcessor(AbstractProducer):
     """ This class represents a single thread for compTree processing."""
 
-    running=0
-    #def __init__(self,hydra,inputQueue,outputQueue,inputCondition,outputCondition): 
-    def oldInit(self, threadQueue, comptreeResultQueue, nodeQueue, comptreeResultsAvailable, comptreeAvailable, finishFlag):
-        """
-        Provides connection of a thread with rest of program.
-        Because thread cannot return value, it has to receive comptreeResult as an input parameter.
-        """
-        # 025 Adapted to producer acording to: http://effbot.org/zone/thread-synchronization.htm
-        threading.Thread.__init__(self)
-        self.debug.printHeader()
-        self.tree=None  # It is expected that tree is NodeProxy instance of whole tree.
-        #self.globalCounters=globalCounters
-        self.threadQueue=threadQueue
-        self.comptreeResultQueue=comptreeResultQueue
-        self.nodeQueue=nodeQueue
-        self.comptreeResultsAvailable=comptreeResultsAvailable # 025 New event (result queued) lock - here is CompTreeProcessor in role of producer.
-        self.comptreeAvailable=comptreeAvailable # 025 New event (comptree queued) lock - here is CompTreeProcessor in role of consumer.
-        self.finishFlag=finishFlag
-        self.logger=self.debug.enrichMainLogger("CompTreeProcessor-%s"%(self.getName()))
-        
-    def oldRun (self):
-        self.debug.printHeader()
-        self.__class__.running += 1
-        self.logger.debug("Object identifier of nodeQueue is: %s"%(id(self.nodeQueue)))
-        if self.finishFlag.isSet() and not self.nodeQueue.qsize(): self.logger.error("Premature end: CompTreeProcessor. finishFlag: %s, nodeQueue.qsize: %i"%(self.finishFlag.isSet(), self.nodeQueue.qsize()))
-        while not self.finishFlag.isSet() or self.nodeQueue.qsize():
-            
-            # Consumer part start
-            self.comptreeAvailable.acquire()
-            self.logger.debug("Condition comptreeAvailable acquired by CompTreeProcessor %s."%(self.getName()))
-            if self.nodeQueue.empty():
-                self.logger.debug("CompTreeProcessor %s put on hold until notified. nodeQueue.qsize: %i; comptreeResultQueue.qsize: %i"%(self.getName(),self.nodeQueue.qsize(),self.comptreeResultQueue.qsize())) 
-                #self.comptreeAvailable.wait()
-                self.comptreeAvailable.wait(self.settings.timeWaitCompTreeProcessor)
-            self.logger.debug("CompTreeProcessor %s woken-up. nodeQueue.qsize: %i; comptreeResultQueue.qsize: %i"%(self.getName(),self.nodeQueue.qsize(),self.comptreeResultQueue.qsize()))
-            if self.nodeQueue.qsize(): self.tree=self.nodeQueue.get()
-            else: self.tree=None
-            self.comptreeAvailable.release()
-            self.logger.debug("Condition comptreeAvailable released by CompTreeProcessor %s."%(self.getName()))
-            # Producer part start
-            if self.tree:
-                self.logger.debug("Thread %s is taking care of compTree %s"%(self.getName(),'/'.join(self.tree.newSplittedLink)))
-                comptreeResult=self.process(self.tree)
-                self.logger.debug("Thread %s finished processing of compTree %s. Now is gonna report results."%(self.getName(),comptreeResult.title))
-                self.comptreeResultsAvailable.acquire()
-                self.comptreeResultQueue.put(comptreeResult)
-                self.comptreeResultsAvailable.notify() # signal that a new item is available
-                self.comptreeResultsAvailable.release()
-                self.logger.debug("Thread %s put results of compTree %s into the comptreeResultQueue and unlocked the queue.."%(self.getName(),comptreeResult.title))
-            
-        if self.finishFlag.isSet() and not self.nodeQueue.qsize(): self.logger.info("CompTreeProcessor %s has nothing to do. Ending. threading.activeCount: %i"%(self.getName(),threading.activeCount()))
-        self.__class__.running -= 1
-        self.threadQueue.task_done()   
+    running=0  
  
     def consume(self):
         self.inputCondition.acquire()
@@ -845,12 +497,8 @@ class Hydra(Queue,Shared):
     Open more connection at once will save a lot of time.
     Hydra should be written without tight bond to CompTreeProcessor, although it is the only Hydra use so far.  
     """
-    # TODO: (025) Great candidate for the Mediator pattern.    
-    #_threadCounter=0 # 025 replaced by Thread.name
     
-    def __init__(self): # 025 ,ConcreteThreadClass):
-        # 025 #self.ConcreteThreadClass=ConcreteThreadClass # 025
-        # 025 #return super(EnhancedCondition, self).__init__()
+    def __init__(self):
         self.initializeGuppy()
         self.initializePsutil()
         self.initializeYappi()
@@ -858,15 +506,6 @@ class Hydra(Queue,Shared):
         self.queueConditions=[None,None,None]
     
     allThreadsStarted = False
-    #def provideThread(self,**kwargs): # 025 Not used
-    #    if len(self._threads) < self.settings.maxThreads:
-    #        #self._threadCounter+=1 # 025
-    #        currentThread=factory.create(self.ConcreteThreadClass)
-    #    else:
-    #        currentThread=self._threads.pop(0)
-    #    result=currentThread.start()
-    #    self._threads.append(currentThread)
-    #    return result
     
     def adjustThreadWaitingTime(self,resultQueueLength,resultQueueSize,previousWaitingTime):
         """
@@ -1081,6 +720,8 @@ class Hydra(Queue,Shared):
             self.psutilInitialized=False
             
     def initializeYappi(self):
+        # 027 Yet Another Python Profiler, but this time Thread-Aware
+        # 027 https://code.google.com/p/yappi/
         try:
             self.yappiInitialized=False 
             # Only get this info, when is gonna be logged.
@@ -1129,63 +770,12 @@ class CounterSupervisor(AbstractProducer):
     """
     
     #running=0
-    
-    # 025 Adapted to consumer thread acording to: http://effbot.org/zone/thread-synchronization.htm
-    
-    # 026       (self,self.hydra,self.inputQueue,self.outputQueue,inputCondition,outputCondition)
-    def oldInit(self, threadQueue, linksQueue, nodeQueue, counterManagerQueue,comptreeResultsAvailable,finishFlag):
-    #counterSupervisor=CounterSupervisor(linksQueue, nodeQueue, comptreeResults, comptreeResultsAvailable, compTreeProcessorFinishFlag)
-        threading.Thread.__init__(self)
-        self.debug.printHeader()
-        self.allFilesCount=CounterManager()
-        self.comptreeResultsAvailable=comptreeResultsAvailable
-        self.threadQueue=threadQueue
-        self.linksQueue=linksQueue
-        self.nodeQueue=nodeQueue
-        self.counterManagerQueue=counterManagerQueue
-        self.finishFlag=finishFlag
-        self.lastAllTrees=0
-        #self.scheduler=sched.scheduler(time.time, time.sleep)
-        #self.scheduler.enter(self.settings.schedulerDelay, 1, self.measurePerformance, ())
-        #self.scheduler.run()
-        self.periodStart=time.time()
-        self.logger=self.debug.enrichMainLogger("CounterSupervisor-%s"%(self.getName()))
-        self.initializeGuppy()
-        self.initializePsutil()
 
     def customInitialization(self): 
         self.allFilesCount=CounterManager()
         self.lastAllTrees=0
         self.periodStart=time.time()
         return True
-        
-        
-    def oldRun(self):
-        self.debug.printHeader()
-        self.__class__.running += 1
-        if self.finishFlag.isSet() and not self.counterManagerQueue.qsize(): self.logger.error("Premature end: CounterSupervisor, finishFlag: %s, counterManagerQueue.qsize: %i."%(self.finishFlag.isSet(), self.counterManagerQueue.qsize()))
-        comptreeResult=CounterManager()
-        #while not self.finishFlag.isSet() or self.counterManagerQueue.qsize():
-        #while threading.activeCount()>2 or self.counterManagerQueue.qsize(): # 025 This is not proper way.
-        while self.threadQueue.shallContinue("CounterSupervisorStrategy"):
-            self.comptreeResultsAvailable.acquire()
-            if self.counterManagerQueue.empty(): self.comptreeResultsAvailable.wait(self.settings.timeWaitCounterSupervisor) # sleep until item becomes available
-            self.logger.debug("CounterSupervisor woken-up. counterManagerQueue.qsize: %i"%(self.counterManagerQueue.qsize()))
-            if self.counterManagerQueue.qsize():
-                comptreeResult=self.counterManagerQueue.get()
-            else: 
-                comptreeResult.reset()
-                self.logger.debug("%s threads still active. (Including self and main thread.)"%(threading.activeCount()))
-            self.comptreeResultsAvailable.release()
-            # 025 Should I refresh counters if no result was processed?
-            comptreeResult.addCounters(self.settings.defaultCounters)
-            self.refreshCounters(comptreeResult)
-            self.periodLength=time.time()-self.periodStart
-            if self.periodLength>=self.settings.schedulerDelay:
-                self.measurePerformance()
-                self.periodStart=time.time()
-                # 026 # self.hydra.rejuvernateThreads()
-        self.__class__.running -= 1
 
     def consume(self):
         self.inputCondition.acquire()
@@ -1357,22 +947,7 @@ if __name__ == "__main__":
 
     debug.ThreadAwareLogger.debug("Waiting for all threads to finish.")
     
-    hydra.joinProducers()
-    
-    # 026 Old ugly and no one knows if it works - resp regr tests passed without it.
-    #while hydra.countRunningThreads().sumAllValues():  
-    #    # 026 since adding the Scheduler Manager it cannot work, because every task is a thread.  
-    #    if threading.activeCount()==hydra.countRunningThreads().sumAllValues()+len(scheduler.ops)+1:
-    #        debug.ThreadAwareLogger.debug("threading.activeCount: %i, hydra.countRunningThreads: %i" %(threading.activeCount(),hydra.countRunningThreads().sumAllValues()))
-    #        # 026 Shall be replaced by rejuvernate threads.
-    #        if not CounterSupervisor.running:
-    #            debug.ThreadAwareLogger.debug("CounterSupervisor probably crashed. Restarting it.")
-    #            hydra.counterSupervisor.start()
-    #    else:
-    #        debug.ThreadAwareLogger.error("threading.activeCount: %i, hydra.qsize: %i; Some thread probably died. Which is teribly wrong."%(threading.activeCount(),hydra.countRunningThreads().sumAllValues()))
-    #    debug.ThreadAwareLogger.debug("Some threads are still active. Putting main thread on hold for %i seconds."%(settings.timeWaitMainThread))    
-    #    time.sleep(settings.timeWaitMainThread)
-    #    debug.ThreadAwareLogger.debug("Main thread woken up. Going to look how many other threads are still active.")       
+    hydra.joinProducers()    
 
     scheduler.stop()
     debug.ThreadAwareLogger.info("Final state of counters is: %s"%(hydra.allFilesCount.printAllValues())) # 025 Done by counterSupervisor

@@ -1,7 +1,7 @@
 #!/bin/env python
 
 #    SLS - Sumid link supplier
-#    Copyright (C) 2010  Roman Hujer <sumid at gmx dot com>
+#    Copyright (C) 2010 - 2012 Roman Hujer <sumid at gmx dot com>
 #
 #    This program is free software: you can redistribute it and/or modify
 #    it under the terms of the GNU General Public License as published by
@@ -52,8 +52,9 @@ import logging
 import logging.handlers
 import miscutil # Interoperates with version 0.24
 import os
+from miscutil import Shared
 
-class DebugHelper(miscutil.Shared):
+class DebugHelper(Shared):
     """
     This class is temporary solution for local logging.
     """
@@ -65,13 +66,13 @@ class DebugHelper(miscutil.Shared):
         #logFileName=self.settings.insertDatetimeIntoFilename(self.settings.get("log","linksLogFileName"))
         logFileName=self.settings.insertDatetimeIntoFilename(self.settings.linksLogFileName) # For compatibility with miscutil 0.26
         #linkLoggerPath=self.settings.get("log","logDir")+"/"+logFileName
-        linkLoggerPath=self.settings.logDir+"/"+logFileName # For compatibility with miscutil 0.26
+        self.linkLoggerPath=self.settings.logDir+"/"+logFileName # For compatibility with miscutil 0.26
 
         # Setup logging
         self.linkLogger = logging.getLogger("link log")
         self.linkLogger.setLevel(logging.DEBUG)
 
-        filelog = logging.FileHandler(linkLoggerPath, 'a')
+        filelog = logging.FileHandler(self.linkLoggerPath, 'a')
         filelog.setLevel(logging.INFO)
         
         # Specify log formatting:
@@ -115,7 +116,10 @@ class DebugHelper(miscutil.Shared):
         
         #logger2 = logging.getLogger('myapp.area2')
 
-class DiggFetcher(miscutil.Shared):
+class DiggFetcher(Shared):
+    
+    def __init__(self,dupeCheckerInstance=None):
+        self.dupeChecker=dupeCheckerInstance
     
     def connectDiggAdaptor(self,diggAdaptorInstance):
         """ Explicit include of pyDigg (by Derek van Vliet <derek@neothoughts.com>) """
@@ -132,8 +136,44 @@ class DiggFetcher(miscutil.Shared):
         stories = diggAdaptor.getStories(count=str(self.settings.getStoriesCount)) # For compatibility with miscutil 0.26
         self.debug2.mainLogger.info("Got another %i diggs"%(len(stories)))
         for story in stories:
-            self.debug2.linkLogger.info(story.link)             
+            # 027 Has to be reloaded every time, coz I write in it at the same time.
+            # 027 Kind of a hack. Maybe I shouldn't use logger here.
+            linklog=file(self.debug2.linkLoggerPath,'r')
+            if not self.settings.checkDupes or not self.dupeChecker or not self.dupeChecker.isDupe(story.link,linklog):
+                self.debug2.linkLogger.info(story.link) 
+            linklog.close()            
 
+    def makeStoriesUnique(self,stories):
+        """ Checks if among one fetch are not dupes. """
+        for cx in range(len(stories)-1,-1,-1): # 027 range([start], stop[, step]) - doesn't include stop in range.
+            for dx in len(stories): # 027 The index is needed to skip the comparsion with itself.
+                if not cx==dx and self.dupeChecker.isDupeToURL(stories[cx].link, stories[dx].link):
+                    self.debug2.mainLogger.debug("Removing url %s as a dupe from a onetime fetch."%(stories[cx].link))
+                    stories.remove(cx)
+        return stories
+            
+    def smartWrite(self,what,where):
+        """ Point is to write just urls which are not dupes."""
+        # 027 Asumes that stories are unique already.
+        pass
+
+class DupeCheckerSimple(Shared):
+    # 027 todo 247: sls: DupeCheckSimple - literal string equivalence / SmartDupeChecker uses patern analyzer.
+    
+    def isDupe(self,urlString,fileObject):
+        """
+        Simply checks if the url, which is added into ll, is there already.
+        It's a class to make it easy replaces with DupeCheckerSmart instance.
+        """
+        result = False
+        for line in fileObject:
+            if line.strip()==urlString.strip(): result = True
+        return result
+        
+    def isDupeToURL(self,firstURL, secondURL):        
+        """ Checks if second URL is dupe to first."""
+        pass
+        return True
 
 # body begin
 
@@ -146,22 +186,14 @@ miscutil.Shared.debug=debug
 debug2=DebugHelper()
 settings.loadAdaptive("all",settings.pathStorage) # loadAdaptive has to be called after creating Debug instance, because Debug.__init__() overwrites it => Singleton doesn't work. Maybe it is because Singleton does work!
 debug2.InitializeLoggers()
-#debug.loadSettings(settings) # obs 0.01
 #debug.initializeLoggers() # Can't do this in init, becase I don't know settings at that time. obs 0.01
+dupeChecker=DupeCheckerSimple()
 
-#diggAdaptor=pydigg.Digg(settings.get("digg","APIKey"))
 diggAdaptor=pydigg.Digg(settings.APIKey) # For compatibility with miscutil 0.26
 
 debug2.mainLogger.info("Basic initialization complete.")
 
-#stories = diggAdaptor.getStories() # obs 0.01
-#debug2.mainLogger.info("Got another %i diggs"%(len(stories)))
-#for story in stories:
-#    #print story.title
-#    #print story.link
-#    debug2.linkLogger.info(story.link)
-
-diggFetcher=DiggFetcher()
+diggFetcher=DiggFetcher(dupeChecker)
 diggFetcher.connectLocalDebug(debug2)
 diggFetcher.connectDiggAdaptor(diggAdaptor)
 diggFetcher.fetch()

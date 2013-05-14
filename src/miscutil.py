@@ -1,10 +1,11 @@
 #    SUMID - Script used for mass items downloading
-#    Copyright (C) 2004-2010  Roman Hujer <sumid at gmx dot com>
+#    Copyright (C) 2004-2012  Roman Hujer <sumid at gmx dot com>
 #    This file is part of SUMID, see sumid.py
 #    SUMID is released under terms of GPL, see http://www.gnu.org/licenses/gpl.txt
 
+# -*- coding: utf-8 -*-
 
-__version__="0.26"
+__version__="0.27"
 
 from distutils import util
 from settings import * # Only for Sumid.
@@ -12,6 +13,7 @@ import sys
 #import pprint
 import logging.handlers
 import ConfigParser
+import os # 027 Because of usage os.sep.
 import os.path # sync with docbook2testlink 
 import time
 import datetime
@@ -19,13 +21,16 @@ import argparse
 import thread
 import threading
 import re
+import urllib2 # 027 For FilesAdaptor
+import sqlite3 # 027 For FilesAdaptor
+import itertools # 027 izip() to iterate over two lists: http://stackoverflow.com/a/1919055/775066
+
 
 # Hacked for docbook2testlink - Remove in Sumid!
 #mainINIFilePath="settings.ini"#"/home/hujerr/eclipse/docbook2testlink3/src/settings.ini"
 
 class NotImplementedYetError(Exception): pass
 class InvalidFileTypeError(Exception): pass
-class PrintUris (Exception): pass # TODO: Should be deprecated soon (024).
 
 class Singleton(object):
     """
@@ -55,7 +60,7 @@ class Singleton(object):
         return cls._instance
     
  
-class EnhancedConfigParser(ConfigParser.ConfigParser):
+class EnhancedConfigParser(ConfigParser.SafeConfigParser):
     """
     This class is simply ConfigParser enhanced by methods getDebugLevel and getList.
     Thus it depends on logging.
@@ -340,6 +345,9 @@ class Settings(Singleton):
     def loadFromINI(self,INIFilePath=None):
         # TODO: (025) Don't use a variable as a default value. Because the variable has to be loaded somehow. Cannot be handled as the rest of settings.
         #self.config=ConfigParser.ConfigParser() # Done in __init__() (024)
+        
+        # 027 ConfigParser - Work with configuration files
+        # 027 http://www.doughellmann.com/PyMOTW/ConfigParser/
         
         #print INIFilePath
         # 026 All alternative paths to setting get overwritten. It is a bug or it should be always called with param? 
@@ -821,6 +829,489 @@ class Shared(object):
     def logger(self):
         """ To give every class access to default logger. """
         return self.debug.ThreadAwareLogger
+
+class FilesAdaptor(Shared):
+    """
+    Cares about opening, closing, reading and writing files.
+    Originally class Logger(Shared) (010?)
+    Must have vars for log files: fetchedLinksList, cleanLinkList, diffLinksList
+    """
+    # Should be reconsidered to just manage collection of file objects (or rather file buffers).
+    # Each file object will have members: contentType{binary|text}, fileName, content, write(), appendText()
+    def __init__(self,pathStorage=None, linklistURL=None):
+        if pathStorage: self.pathStorage=pathStorage
+        else: self.pathStorage=self.settings.pathStorage
+        if not os.path.exists(self.pathStorage.workDir()): os.makedirs(self.pathStorage.workDir())
+        self.magicType=None # 027 Magic is used to determine filetype. See initializeMagicFile.
+        self.initializeMagicFile()
+        self.openLinklistFile(linklistURL)
+        self.emptyFileFlag={}
+
+    def initializeMagicFile(self):
+        """ 
+        Tries to import either magicgit or magic library.
+        Lib magicgit is downloaded from: https://github.com/ahupp/python-magic
+        -- while gives best results is completelly non-standard.
+        Lib magic is from debian package python-magic
+        """
+        
+        if not self.magicType or self.magicType=="magic":
+            try:
+                import magicgit
+                self.magicgit=magicgit
+                self.magicType="magicgit"
+            except ImportError:
+                self.logger.debug("Importing of library magicgit was unsuccesful.")
+            
+        if not self.magicType:
+            try:
+                import magic
+                self.magic=magic
+                self.magicType="magic"
+            except ImportError:
+                self.logger.warning("Importing of library magic was unsuccesful. Install package python-magic.")
+    
+    def initializeStemer(self):
+        if not hasattr(self,"stemmer"):
+            try:
+                from Stemmer import Stemmer
+                self.stemmer=Stemmer('english')
+            except ImportError:
+                self.logger.error("Importing of library magicgit was unsuccesful.")
+                self.stemmer=None
+                
+    def isBZ2(self,filePath): 
+        if self.magicType=="magicgit":
+            # 027 Lib magicgit downloaded from: https://github.com/ahupp/python-magic
+            magicGuesser=self.magicgit.Magic(mime=True)   
+            fileType=magicGuesser.from_file(filePath)
+            if fileType=="application/x-bzip2": return True
+            else: return False
+        elif self.magicType=="magic":
+            # 027 Lib magic from debian package python-magic
+            magicGuesser = self.magic.open(self.magic.MIME)
+            magicGuesser.load()
+            fileType=magicGuesser.file(filePath)
+            if fileType=="application/x-bzip2; charset=binary": return True
+            else: return False
+        else: 
+            # 027 No smart way to guess. Just try to look at extension.
+            mash=filePath.split('.')
+            if mash[-1]=="bz2": return True
+            else: return False            
+
+    def openLinklistFile(self,linklistURL):
+        """ 
+        Takes care about creating the file linklist handler.
+        - If it isn't a local file uses urllib2 to open it.
+        - If it is a local file uses regular file handler.
+        - If the local file is bziped uses bzip opener.
+        
+        - Cannot handle multistream bz2 files or .tar.bz2 .
+        - Cannot handle non-local bz2 files. 
+        """
+        
+        if not linklistURL: linklistURL=self.settings.linklistURL
+        self.logger.debug("Path to linklist is currently set to: %s" %(linklistURL))
+        request=urllib2.Request(linklistURL)
+        
+        # 027 Based on type distant/local/local.bz2 action to open is taken.
+        if request.get_type() == 'file':
+            filePath=request.get_selector()
+            if self.isBZ2(filePath):
+                import bz2
+                self.linklist=bz2.BZ2File(filePath,'r')
+            else:
+                self.linklist=file(filePath,'r')  
+        else:
+            self.linklist=urllib2.urlopen(linklistURL)
+        
+    def write(self,aFile,lines):    
+        """
+        This method is meant to write many lines to text file at once.
+        Good is, that isn't needed doing write repeateadly, bad is that, if something crashes
+        nothing gets logged.
+        Currently method accepts string, and also list of strings as lines.
+        Lines currently (021) could be also splitted links, which is going to be discontinued pretty soon.
+        """
+        # Not necessary (comment older than 021 - no idea what does that mean)
+        # Maybe meant to be obsoleted by writeLine and writeLog
+        self.debug.printHeader()
+        for line in lines:
+            if not hasattr(line,'upper'): line=self.settings.pathStorage.composeURL(line)
+            # Really poor way how differ between string and list
+            # Should be rewriten. Lines could contain only array of strings (not array of arrays).
+            aFile.write(line)
+            aFile.write('\n')
+
+    def writeFile(self,fileLink,fileBuffer,testChars=''):
+        """
+        Simply writes file to disk.
+        Currently(021) writes also test string at beginning of file and
+        also tweaks file to be literally sortable same as numerically.
+        If needed also creates needed sub-directories according to link. 
+        """
+        # 026 Unit test should test also urllib file like object aside the real file.
+        #self.debug.printHeader() # Too many times -- need to move to debuglevel=4
+        filePath=fileLink.replace('http://','')
+        [fileDir,fileName]=os.path.split(filePath)
+        if not os.path.exists(self.pathStorage.workDir()+os.sep+fileDir): os.makedirs(self.pathStorage.workDir()+os.sep+fileDir)
+        localFile=file(self.pathStorage.workDir()+os.sep+fileDir+os.sep+fileName,'wb')
+        localFile.write(testChars)
+        localFile.write(fileBuffer.read())
+        localFile.close()
+
+    def loadPartOfAFile(self,aFile,numberOfLines=None):
+        """ 
+        This method reads specified number of lines from a file.
+        readlines(number) did not work for urllib.
+        026 Then inheritance should be used instead => EnhancedURLopener(URLopener)
+        """
+        result=[]
+        if hasattr(aFile,"name"): name=aFile.name
+        elif hasattr(aFile,"url"): name=aFile.url
+        if not name in self.emptyFileFlag: self.emptyFileFlag[name]=False
+        #tmp=tempfile.TemporaryFile()
+        if not numberOfLines: numberOfLines=self.settings.fileSipSize
+        for lineno in range(numberOfLines):
+            line=aFile.readline()
+            if not line: self.emptyFileFlag[name]=True
+            result.append(line)
+        return result
+    
+    def loadPartOfLinkList(self,numberOfLines=None):
+        """ 
+        This method knows, where the linklist is.
+        That's its only gain against loadPartOfAFile().
+        """
+        # 026 Which is a temporary workaround.
+        # 026 In future this should be responsibility of Linklist class.
+        return self.loadPartOfAFile(self.linklist,numberOfLines)
+
+    def fileProcessed(self,fileInstance):
+        """ Returns True if the fileInstance was FULLY processed by loadPartOfAFile. False otherwise."""
+        if hasattr(fileInstance,"name"): name=fileInstance.name
+        elif hasattr(fileInstance,"url"): name=fileInstance.url
+        if name in self.emptyFileFlag: return self.emptyFileFlag[name]
+        else: return False
+
+    def createTableBOW(self,DBcursor):
+        """ 
+        Create simple BOW table.
+        Move to method mainly to alter the table with complex one. 
+        """
+        sql="create table if not exists BOW (bow_id INTEGER PRIMARY KEY, word TEXT, word_count INTEGER);"
+        DBcursor.execute(sql)
+        
+    def connectDB(self):
+        """
+        I assume to have one db for everything.
+        Different things will be stored in different tables.
+        """
+        dbFilePath="%s%s%s.sqlite"%(self.settings.logDir,os.sep,self.settings.mainLogFileName)
+        self.DBconnection=sqlite3.connect(dbFilePath, check_same_thread = False) # 026 check_same_thread needed in bow.
+        self.DBcursor=self.DBconnection.cursor()
+        self.createTableBOW(self.DBcursor)
+        
+    def disconnectDB(self):
+        self.finalize()
+        self.DBconnection.close()
+        
+    def updateBOW(self,counters):
+        """
+        This will update counters in database.
+        It will choose either INSERT OR UPDATE.
+        As input is expected CounterManager instance.
+        Returns number of BOW rows after update. 
+        """
+        for counterName in counters.counters.keys():
+            sql="select %s_count from BOW where word=?;"%(counters.title)
+            args=(counterName,)
+            self.DBcursor.execute(sql,args)
+            sqlResult=self.DBcursor.fetchall()
+            # 027 If the counter already is in the table, it shall be updated.
+            if len(sqlResult):
+                currentCount=sqlResult[0][0]
+                #self.logger.debug("This line will get updated now: %s"%(str(sqlResult)))
+                # 027 Often in the sql table will be None, which cannot be added to an int.
+                if currentCount: newCount=counters.value(counterName)+currentCount
+                # 027 Counter shouldn't be None.
+                else: newCount=counters.value(counterName)                   
+                if counters.value(counterName)>50: 
+                    self.logger.debug("Updating database word %s by %s. (Old value: %s, New value: %s.)"%(counterName,counters.value(counterName),str(currentCount),newCount))                
+                sql="update BOW set %s_count=? where word=?"%(counters.title)
+                args=(newCount,counterName)
+            # 027 If the counter isn't in the table, new line has to be inserted.
+            else:
+                if counters.value(counterName)>50: 
+                    self.logger.debug("Adding to the database word %s with value %s."%(counterName,counters.value(counterName)))
+                sql="insert into BOW (word, %s_count) values (?,?)"%(counters.title)
+                args=(counterName,counters.value(counterName))
+            self.DBcursor.execute(sql,args)
+        self.DBconnection.commit()
+        sql="select count(bow_id) from BOW"
+        args=()
+        self.DBcursor.execute(sql,args)
+        result = self.DBcursor.fetchall()
+        return result[0][0]
+
+    def getTableLinesCount(self,tableName,primaryKeyName):
+        """ Replaced by max to challenge mising lines."""
+        # 027 Find how many lines are in bow table.
+        # 027 Won't work for any ta
+        sql="select max(%s) from %s;"%(primaryKeyName,tableName)
+        args=()
+        self.DBcursor.execute(sql,args)
+        result = self.DBcursor.fetchall()
+        if not result[0][0]: return 0 #027 Number of lines shall never be None. 
+        return result[0][0]  
+    
+    def finalize(self): 
+        """ Finalize method is called before disconnecting of the db. """
+        # 027 Not needed in the simple FilesAdaptor. 
+        pass
+
+class FilesAdaptorComplex(FilesAdaptor):
+    """
+    Needed to work with BOWBuilderComplex.
+    The only difference is in creating the table for BOW.
+    updateBOW is identical.
+    """
+
+    # 027 The problem is that the total count is not count. And cannot be. Cause the table is filled in by columns and the total is by rows.
+    # 027 I may create a new method to do just the count and call it in the finalize().
+    # 027 Cannot be in finalize, coz requires db access!
+    
+    def createTableBOW(self,DBcursor):
+        """ 
+        Create simple BOW table.
+        Move to method mainly to alter the table with complex one. 
+        """
+        sql="create table if not exists BOW (bow_id INTEGER PRIMARY KEY, word TEXT, total_count INTEGER, netloc_count INTEGER, path_count INTEGER, params_count INTEGER, query_count INTEGER, fragment_count INTEGER);"
+        DBcursor.execute(sql)     
+    
+    def sumBowLine(self,lineNo):
+        # 027 Beware lineNo shall be cx+1 because it starts from 1!
+        sql="select netloc_count,path_count,params_count,query_count,fragment_count from BOW where bow_id=?;"
+        args=(lineNo,) # 027 Primary key in sqlite start from 1.
+        self.DBcursor.execute(sql,args)
+        result = self.DBcursor.fetchall()
+        # 026 The sumation of the current line.
+        lineSuma=0
+        if result and result[0]: #027 For the case that given bow_id doesn't exist. 
+            for count in result[0]:
+                if count: lineSuma+=count
+            sql="update BOW set total_count=? where bow_id=?;"
+            args=(lineSuma,lineNo)
+            self.DBcursor.execute(sql,args)
+        else: self.logger.debug("This bow_id does not exist: %i"%(lineNo))
+        return lineSuma
+    
+    def mergeLines(self,firstLineID,secondLineID):
+        """ 
+        Merge second line to first combining the counts.
+        ID and word of first line is kept.
+        Second line is truncated afterward. 
+        Does not commit the changes!!!
+        """
+        # 027 Get the lines
+        sql="select word, total_count, netloc_count, path_count, params_count, query_count, fragment_count from BOW where bow_id=? or bow_id=?;"
+        args=(firstLineID,secondLineID,) 
+        self.DBcursor.execute(sql,args)
+        result = self.DBcursor.fetchall()
+        # 027 Combine the lines
+        combined=[]
+        # 027 Required check if both lines exist.
+        if not len(result)==2 or not result[0] or not result[1]:
+            self.logger.warning("One of input lines (%i,%i) does not exist in result: %s"%(firstLineID,secondLineID,str(result)))
+        else:
+            #
+        
+            for item in itertools.izip(result[0],result[1]):
+                # 027 Skips string and None - in both cases keeps original value.
+                # 027 Column word is string. No sense to combine.
+                if not isinstance(item[1],int):
+                    combined.append(item[0])
+                # 027 If first is int and second null addition is not defined. Using the non-null one.
+                elif not item[0]:
+                    combined.append(item[1])
+                else:
+                    combined.append(item[0]+item[1])
+            # 027 Writing changes into the db.
+            sql="update BOW set total_count=?, netloc_count=?, path_count=?, params_count=?, query_count=?, fragment_count=? where bow_id=?;"
+            # 027 combined[0] is word - not updating.
+            args=(combined[1],combined[2],combined[3],combined[4],combined[5],combined[6],firstLineID,)
+            self.DBcursor.execute(sql,args)
+            sql="delete from BOW where bow_id=?;"
+            args=(secondLineID,)
+            self.DBcursor.execute(sql,args)
+        return combined    
+        
+    def finalize(self):
+        """ Finalize method is called before disconnecting of the db. """
+        # 027 Filling-in of the total_count column.
+        self.logger.debug("Finalizing the bow table. Counting the total_count column.")
+        # 027 Find how many lines are in bow table.
+        bowLinesCount=self.getTableLinesCount("BOW","bow_id")
+        # 027 Now count and update the line sumation for each line.
+        for cx in range(bowLinesCount): self.sumBowLine(cx+1)
+        self.DBconnection.commit()
+        
+    def applyStemFilter(self):
+        """
+        Even thou filters shall be logicaly in bow.py this functionality is very tightly coupled with the db.
+        Purpose is to join singular and plural words in the bag.
+        This filter shall be ran only once after the bag processing is complete.
+        """
+        
+        """
+        027 Steps to do:
+        1 Create temporary table with all "candidates".
+        2 Select one line from temp_bow
+        3 Issue the stem
+        4 Select from bow result od stem
+        5a If exists do mergelines
+        5b Else nothing
+        6 Remove processed line from temp_bow 
+        
+        """
+
+        if not hasattr(self,"stemmer"): # 027 This is to really initialize stemmer.
+            self.initializeStemer() 
+            if not hasattr(self,"stemmer") or not self.stemmer : # 027 This is to check if initialization succeded.
+                self.logger.error("Stemization failed, because stemmer is not initialized.")
+            else:
+                # 027 1 Create temporary table:
+                # 027 Only survives with a current cursor instance
+                sql="create temporary table BOW_plural_candidates as select * from BOW where word like '%s';"
+                args=()
+                self.DBcursor.execute(sql,args)
+                register=[] # 027 Registers which lines were modified to prevent overwrite in second modification.
+                for cx in range(self.getTableLinesCount("BOW_plural_candidates","bow_id")):
+                    # 027 2 Select one line from temp_bow
+                    sql="select * from BOW_plural_candidates limit 1;"
+                    args=()
+                    self.DBcursor.execute(sql,args)
+                    line = self.DBcursor.fetchone()
+                    if line:
+                        # 027 3 Issue the stem
+                        stemmedWord=self.stemmer.stemWord(line[1])
+                    else:
+                        stemmedWord=""
+                        self.logger.debug("Got wrong input for stemization: %s"%(str(line))) 
+                        line=[None,None]
+                        if not self.getTableLinesCount("BOW_plural_candidates", "bow_id"):
+                            self.logger.debug("Bow plural candidates table is empty. Ending.")
+                            break
+                    if stemmedWord in register:
+                        self.logger.debug("Doing commit because word %s was found in register."%(stemmedWord)) 
+                        self.DBconnection.commit()
+                    if not stemmedWord == line[1]:
+                        # 027 4 Select from bow result od stem
+                        sql="select * from BOW where word like ?"
+                        args=(stemmedWord,)
+                        self.DBcursor.execute(sql,args)
+                        singularCandidate = self.DBcursor.fetchall()
+                        # 027 5a If exists do mergelines
+                        # 027 Lines get merged only when there is exactly one line matching line.
+                        # 027 If the stemmed word doesn't match anything original word is preserved.
+                        # 027 More line - shall not happen. 
+                        if len(singularCandidate)==1: 
+                            self.mergeLines(singularCandidate[0][0], line[0])
+                            register.append(stemmedWord)
+                            self.logger.debug(" Line %i with word %s was merged to line %i with word %s"%(line[0],line[1],singularCandidate[0][0],singularCandidate[0][1]))              
+                    # 027 6 Remove processed line from temp_bow 
+                    sql="delete from BOW_plural_candidates where bow_id=?;"
+                    args=(line[0],)
+                    self.DBcursor.execute(sql,args)
+                self.DBconnection.commit()
+                
+                
+class PathStorage(Shared):
+    """
+    Factory method abstract product (instance shouldn't be allowed).
+    Cares about path which are dependent on OS. Also creates directories, when needed.
+    
+    The notImplementedError is in virtual method, the should be overriden by concrete product.
+    It differs from notImplementedYetError, which means that I'm lazy and I haven't implemented it YET.
+    properties: platform, workdir
+    """
+    # Some items from following could be treated as get() of property. 
+    def homeDir(self):       raise NotImplementedError
+    def workDir(self):       raise NotImplementedError #aka savepath
+    def rekursiveMKDir(self):raise NotImplementedError
+    def composePath(self):   raise NotImplementedError
+    def composeURL(self):    raise NotImplementedError
+
+class UnixPathStorage (PathStorage):
+    """
+    Concrete factory method product for OSes marked as unix.
+    
+    Convention: None of paths should be ended by slash or else slashes could be doubled.
+    """
+    
+    def __init__(self):
+        #self.rekursiveMKDir(self.workDir()) # 0.22
+        if not os.path.exists(self.workDir()): os.makedirs(self.workDir())
+        
+    def homeDir(self): return os.environ['HOME']
+    
+    def workDir(self):
+        """ Just says what is working directory. """
+        self.debug.printHeader()
+        #if hasattr(self.settings, "workDir"): toret=self.settings.workDir # 025 todo 143
+        if self.settings.config.has_section("files") and self.settings.config.has_option("files","workDir"):
+            # toret=self.settings.get("files","workDir") 025
+            toret=self.settings.workDir
+        else: toret=os.environ['HOME']+'/xxz'
+        # Also could write workdir back to settings.
+        return toret
+                
+    def composeURL(self,splitedURL):
+        """
+        Collects pieces of splitted url back together.
+        """
+        # 027 With use of SmartURL won't be necessary anymore.
+        # 027 was used only in LinklistAdaptor.parse2Queue().parseLine() -> removed (Which actually might jeopardize cll).
+        # 027 So actually is NOT used anywhere.
+        
+        #Could be replaced by string.join() method.
+        #Also could be merged with method composePath().
+        #Create child of list class with this method. 
+        
+        self.debug.printHeader() 
+        url=''
+        if len(splitedURL)>0:
+            for piece in splitedURL:
+                if not(piece==splitedURL[0]): url+='/'
+                url+=piece
+        self.logger.debug("Composed url is: %s" %(url))
+        return url
+        #return "/".join(splitedURL) #026 This will do the same job. But needs to be tested.
+    
+    def composePath(self,splitedPath):
+        """
+        Puts pieces of filesystem path back together, for each platform differently.
+        """
+        # 027 It is used anywhere?? Nope!! Remove!
+
+        self.debug.printHeader()
+        return os.sep.join(splitedPath)
+
+
+class Win32PathStorage(PathStorage):
+    """
+    Concrete factory method product for OSes marked as win32.
+      
+    Convention: None of paths should be ended by slash or else slashes could be doubled.
+      
+    Not implemented since (010), always there's something more important than porting Sumid to win32.
+    >>> import os 
+    >>> os.environ['HOME'] 
+    'C:\\Documents and Settings\\Administrator' 
+    """
+    def __init__(self):
+        raise NotImplementedYetError
         
 class FactoryMethod(Shared):
     """

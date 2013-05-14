@@ -6,6 +6,49 @@ Roman Hujer
 %%toc
 
 
+== Changes in Sumid version: 0.27 ==
+
+
+- New items in todo list: 8
+- Items removed from todo list: 5
+- Open items in todo list in total: 87
+
+
+=== From Todo list: ===
+- 235: Update BOW table with following columns (name, count_netloc, count_path, count_params, count_all)
+     - prerequieres:
+     - implementing properties: netloc, path, params, query and fragment (226)
+     - change in FilesAdaptor.updateBOW
+     - create SmartURL.Words() which separates url per parts.
+     - In BOW create BOWBuilder class, which create bow for each class.
+     - The counter name will be hint for filesAdaptor which column to update with the counter. 
+     - So FilesAdaptor.updateBOW() stays unchanged.
+     - But FilesAdaptor.connectDB() has to change to know what fashion of table has to be created. 
+- 243: Create possibility of bzipped linklist.
+- 245: sls: Add dupechecker. 
+     - If the the link is already in linklist, won't be added
+     - Configurable (linklist could be giant => slow)
+     - DupeCheckSimple - literal string equivalence / SmartDupeChecker uses patern analyzer.
+- 247: sls: DupeCheckSimple - literal string equivalence / SmartDupeChecker uses patern analyzer.
+     - simple so far so good :-)
+- 250: Move FilesAdaptor into miscutil
+         - This change was pushed forward to solve the cyclic dependence between sumid and bow which arose with filters creation.
+         - Nevertheless FilesAdaptor ought to be in miscutil
+     - Create copy of the files adaptor in miscutil
+         - required tomove also the PathStorage classes.
+     - Redirect all calls of filesAdaptor in regular units to miscutil
+     - Create a copy of unittest for filesAdaptor in miscutil
+     - Redirect all unittests to filesAdaptor in miscutil
+     - Make work the unittest_miscutil
+     - Remove the test of filesAdaptor from unittest_sumid
+     - Make work all the unittest
+     - Do the test run of the small regression set.
+     - Remove the FilesAdaptor from sumid
+
+
+=== Deprecated: ===
+
+
 == Changes in Sumid version: 0.26 ==
 Finalized: 07.04.2012
 
