@@ -10,7 +10,8 @@
 """
 __version__="0.27"
 
-mainINIFilePath="/media/KINGSTON/Sumid/src/sumid.ini"
+#mainINIFilePath="/media/KINGSTON/Sumid/src/sumid.ini"
+mainINIFilePath="../config/sumid.ini"
 
 class RawSettings(object):
     # Linklist and workdir were moved to sumid.ini in 0.25.

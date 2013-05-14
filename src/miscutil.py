@@ -1,5 +1,5 @@
 #    SUMID - Script used for mass items downloading
-#    Copyright (C) 2004-2012  Roman Hujer <sumid at gmx dot com>
+#    Copyright (C) 2004-2012  Roman Hujer <roman.hujer@email.cz>
 #    This file is part of SUMID, see sumid.py
 #    SUMID is released under terms of GPL, see http://www.gnu.org/licenses/gpl.txt
 
@@ -7,9 +7,13 @@
 
 __version__="0.27"
 
+# Setup path for imports
+import sys
+sys.path.append('../thirdparty/') # For argparse.
+sys.path.append('../config/') # For settings.
+
 from distutils import util
 from settings import * # Only for Sumid.
-import sys
 #import pprint
 import logging.handlers
 import ConfigParser

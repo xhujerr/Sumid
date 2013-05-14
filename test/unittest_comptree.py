@@ -8,6 +8,10 @@
 
 __version__="0.27"
 
+# Set path for imports
+import sys
+sys.path.append('../src/')
+
 import unittest
 import comptree
 from miscutil import Settings, Debug, Shared, CounterManager

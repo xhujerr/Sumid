@@ -3,6 +3,12 @@
 
 __version__="0.27"
 
+
+# Set path for thirdparty imports
+import sys
+sys.path.append('../thirdparty/')
+sys.path.append('../src/')
+
 import unittest
 import mocklegacy
 from mock import Mock

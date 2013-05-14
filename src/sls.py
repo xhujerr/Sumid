@@ -36,8 +36,12 @@ notes="""
 v003 Adapted to work with miscutil 0.26.
 """
 # Settings begin
-mainINIFilePath='/media/KINGSTON/Sumid/src/sls.ini'
+mainINIFilePath='../config/sls.ini'
 #Settings end
+
+# Set path for thirdparty imports
+import sys
+sys.path.append('../thirdparty/')
 
 import pydigg
 # PyDigg is a Python toolkit for the Digg API. It provides an object-oriented interface to all of the available endpoints of the API. It is offered under the MIT License

@@ -9,8 +9,8 @@ Roman Hujer
 == Changes in Sumid version: 0.27 ==
 
 
-- New items in todo list: 8
-- Items removed from todo list: 5
+- New items in todo list: 9
+- Items removed from todo list: 6
 - Open items in todo list in total: 87
 
 
@@ -44,7 +44,7 @@ Roman Hujer
      - Make work all the unittest
      - Do the test run of the small regression set.
      - Remove the FilesAdaptor from sumid
-
+- 252: Split content of src into directories thirdparty, config and test.
 
 === Deprecated: ===
 

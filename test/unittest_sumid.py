@@ -1,7 +1,11 @@
 """Unit test for sumid.py"""
 # http://bayes.colorado.edu/PythonGuidelines.html#unit_tests
 
-__version__="0.26"
+__version__="0.27"
+
+# Set path for imports
+import sys
+sys.path.append('../src/')
 
 import unittest
 import sumid
@@ -41,6 +45,7 @@ class HydraDummy(sumid.Hydra):
 
 class HydraMock(Mock):
     def __init__(self):
+        super(HydraMock, self).__init__()
         self.filesAdaptorInstance=FilesAdaptorMock()
         self.shallContinue=sumid.Hydra.shallContinue
 
@@ -98,6 +103,7 @@ class ProducerCausingException(sumid.AbstractProducer):
 class FilesAdaptorMock(Mock):
 
     def __init__(self,numberOfLinesInFile=0):
+        super(FilesAdaptorMock, self).__init__()
         #self.pseudofile=tempfile.NamedTemporaryFile() # 026
         self.pseudofile=[]
         self.addLinesToFile(numberOfLinesInFile)
@@ -149,6 +155,9 @@ class FilesAdaptorMock(Mock):
         return True
             
 class LinklistMock(Mock):
+    def __init__(self):
+        super(LinklistMock, self).__init__()
+    
     def parse2Queue(self,linklist=None):
         result=sumid.Queue()
         howMany=5
@@ -157,6 +166,9 @@ class LinklistMock(Mock):
         return result
     
 class UnixPathStorageMock(Mock):
+    def __init__(self):
+        super(UnixPathStorageMock, self).__init__()    
+    
     def workDir(self):
         return "/home/sumid.results/unittests"
     

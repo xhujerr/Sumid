@@ -3,3 +3,6 @@
 
 # Merge backups
 *orig
+
+# Python compiled files
+*pyc

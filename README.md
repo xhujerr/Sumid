@@ -6,7 +6,7 @@ Script used for mass items downloading
 This program is used as a software support for my reserach project. The research project focuses on searching patterns in URL. I try to find, describe and quantify patterns in URL. The program could be categorized as a crawler (spider).
 Folowing articles describing experiments with the program:
 - [Numeric pattern in URL and its modification](documentation/GN78-Roman.Hujer-1.2.pdf)
-- [Usage of the "Bag of words model" for URL](documentation/DIST2012-22-Roman.Hujer.pdf)
+- [Usage of the "Bag of words model" for URL](http://icee.dis.spbstu.ru/proceedings2012/papers/DIST/DIST2012-22.pdf)
 
 
 ## Program operation - in short

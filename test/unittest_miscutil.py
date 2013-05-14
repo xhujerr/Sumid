@@ -2,6 +2,13 @@
 
 __version__="0.27"
 
+
+# Set path for thirdparty imports
+import sys
+sys.path.append('../thirdparty/')
+sys.path.append('../src/')
+sys.path.append('../config/')
+
 import sqlite3
 import os
 import mocklegacy
@@ -60,9 +67,9 @@ class SettingsTest(unittest.TestCase):
         # (025) Rather indicate that I want Settings instance recreated. (Forcefully bypass the Singleton.):
         miscutil.Settings._instance = None
          
-        self.settingsFile=file("settings.py",'r')
+        self.settingsFile=file("../config/settings.py",'r')
         self.rawSettings=self.getKeysFromFile(self.settingsFile)
-        self.INIFile=file("sumid.ini",'r')
+        self.INIFile=file("../config/sumid.ini",'r')
         self.rawINI=self.getKeysFromFile(self.INIFile)
 
     def getKeysFromFile(self,settingsFile):
@@ -200,7 +207,7 @@ class SettingsTest(unittest.TestCase):
         """Does loadFromINI load all values correctly? (except lists)"""
         
         dummySettings=DummySettings()
-        localMainINIFilePath="/media/KINGSTON/Sumid/src/sumid.ini"
+        localMainINIFilePath="../config/sumid.ini"
         loadedSettings=dummySettings.loadFromINI(localMainINIFilePath)
         
         for key in self.rawINI.keys():

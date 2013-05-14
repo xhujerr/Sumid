@@ -224,6 +224,7 @@ todoList=""" Todo list:
          - Stemming library by Porter http://tartarus.org/~martin/PorterStemmer/ also package python-stemmer
      - Filter 3: national domains (low importance - is in netlock).
 251: Rewrite SmartURL to be using furl: https://github.com/gruns/furl/     
+253: --next bug --
 """
 
 import os
