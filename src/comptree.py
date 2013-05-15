@@ -354,7 +354,7 @@ class DistantFile(Shared):# Afaik inheritance from NodeProxy not needed.
         if not hasattr(self,'pattern'): self.pattern=PatternAnalyser()
         # Opening distant file, or just scanning, what is avail without downloading it.
         # FilesAdaptor.writeFile is a bit complicated to do it right away.
-        self.settings.filesAdaptor.writeFile(pattern.correctNumLength(self.distantFileURL,self.settings.minNumberLength),self.content)
+        self.settings.filesAdaptor.writeFile(self.pattern.correctNumLength(self.distantFileURL,self.settings.minNumberLength),self.content)
         # Could also create new file object, which already knows how to write itself.  
     
     def close(self):
