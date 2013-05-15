@@ -14,10 +14,15 @@ Version Bookkeeping
     other code, separated by a blank line above and below.
 """
 
+# Setup path for imports
+import sys
+sys.path.append('../thirdparty/') # For furl.
+
 __version__="0.27"
 
 from miscutil import NotImplementedYetError, Shared, Debug, Settings
 from Queue import Queue
+from furl import furl
 import urlparse, urllib
 from bz2 import BZ2File # 027 Only because of the check in connectLinklist.
 # 026 Although I actually use urllib2 the needed addinfourl is defined in urllib and imported to urllib2.
@@ -252,17 +257,19 @@ class TextLinklistParser(AbstractLinklistParser):
         return self.linklistAdaptorInstance.EOF
 
             
-class SmartURL(urlparse.ResultMixin): # Class added in 026.
+class SmartURL(furl): # Class added in 026.
     
     _composed=""
     #_splitted=[] # 026 Do the split everytime is safer.
     
     def __init__(self,url,spcPart=""):
         # 026 Spc part includes the symbol.
+        super(SmartURL, self).__init__(url)
         if self.isValid(url):
             self._composed=url
             self._seed=url
             self._spcPart=spcPart
+            #self.urlparse(self._composed)
         # 026 If url is not valid, exception is thrown from validation.     
     
     def isValid(self,url):
@@ -361,16 +368,24 @@ class SmartURL(urlparse.ResultMixin): # Class added in 026.
     # 026 urlparse() product properties if not exist, calls self.urlparse.
     # 026 properties are named with lowercase to maintain compatibility with urlparse module.
     
+    # some kind of backwards compatibility
+    @property
+    def hostname(self):
+        return self.host
+    
+    '''
     @property
     def scheme(self):
         if not hasattr(self,"_scheme"): self.urlparse(self._composed)
         return self._scheme
-
+    '''
+    '''
     @property
     def netloc(self):    
         if not hasattr(self,"_netloc"): self.urlparse(self._composed)
         return self._netloc
-    
+    '''
+    '''
     @property
     def path(self):
         if not hasattr(self,"_path"): self.urlparse(self._composed)
@@ -391,7 +406,7 @@ class SmartURL(urlparse.ResultMixin): # Class added in 026.
         # 026 Since character # is forbidden in SmartURL this shall never happen.
         if not hasattr(self,"_fragment"): self.urlparse(self._composed)
         return self._fragment
-
+'''
 
         
 class History(Shared):
