@@ -215,20 +215,20 @@ class SmartURLTest(unittest.TestCase):
     def test_path(self):
         """ SmartUrl returns path for both relative and absolute url."""
         url=SmartURL("http://argouml-stats.tigris.org/documentation/manual-0.26/ch02.html")
-        self.assertEqual(url.path,"/documentation/manual-0.26/ch02.html")
+        self.assertEqual(url.pathstr,"/documentation/manual-0.26/ch02.html") # 027 in furl named .pathstr instead of path.
         url=SmartURL("/documentation/manual-0.26/ch02.html")
-        self.assertEqual(url.path,"/documentation/manual-0.26/ch02.html")
+        self.assertEqual(url.pathstr,"/documentation/manual-0.26/ch02.html")
         url=SmartURL("http://argouml-stats.tigris.org")
-        self.assertEqual(url.path,"")
+        self.assertEqual(url.pathstr,"")
 
     def test_query(self):
         """ SmartUrl returns query for both relative and absolute url."""
         url=SmartURL("http://lcweb2.loc.gov/cgi-bin/query/h?pp/horyd:field+(NUMBER+band(thc+5a46634))")
-        self.assertEqual(url.query,"pp/horyd:field+(NUMBER+band(thc+5a46634))")
+        self.assertEqual(url.querystr,"pp/horyd:field+(NUMBER+band(thc+5a46634))=")  # 027 in furl named .querystr instead of query.
         url=SmartURL("/cgi-bin/query/h?pp/horyd:field+(NUMBER+band(thc+5a46634))")
-        self.assertEqual(url.query,"pp/horyd:field+(NUMBER+band(thc+5a46634))")
+        self.assertEqual(url.querystr,"pp/horyd:field+(NUMBER+band(thc+5a46634))=")
         url=SmartURL("http://argouml-stats.tigris.org")
-        self.assertEqual(url.query,"")        
+        self.assertEqual(url.querystr,"")        
     
     # 026 Well I forbade character # in SmartURL    
     #def test_path(self):
@@ -241,40 +241,40 @@ class SmartURLTest(unittest.TestCase):
     #    self.assertEqual(url.fragment,"")   
 
     def test_hostname(self):
-        """ SmartUrl returns hostname for absolute url and None for relative url."""
+        """ SmartUrl returns hostname for absolute url and empty string for relative url."""
         url=SmartURL("http://user:heslo@argouml-stats.tigris.org:3516")
         self.assertEqual(url.hostname,"argouml-stats.tigris.org")
         url=SmartURL("/cgi-bin/query/h?pp/horyd:field+(NUMBER+band(thc+5a46634))")
-        self.assertEqual(url.hostname,None)
+        self.assertEqual(url.hostname,'')
         url=SmartURL("http://argouml-stats.tigris.org")
         self.assertEqual(url.hostname,"argouml-stats.tigris.org")      
 
     def test_port(self):
-        """ SmartUrl returns port if specified, None else."""
+        """ SmartUrl returns port if specified, defalut port else."""
         url=SmartURL("http://user:heslo@argouml-stats.tigris.org:3516")
         self.assertEqual(url.port,3516)
         url=SmartURL("/cgi-bin/query/h?pp/horyd:field+(NUMBER+band(thc+5a46634))")
-        self.assertEqual(url.port,None)
+        self.assertEqual(url.port,None) # 027 default port for relative url is empty string
         url=SmartURL("http://argouml-stats.tigris.org")
-        self.assertEqual(url.port,None)   
+        self.assertEqual(url.port,80) # 027 default port for http is 80  
 
     def test_username(self):
-        """ SmartUrl returns username if specified, None else."""
+        """ SmartUrl returns username if specified, empty string else."""
         url=SmartURL("http://user:heslo@argouml-stats.tigris.org:3516")
         self.assertEqual(url.username,"user")
         url=SmartURL("/cgi-bin/query/h?pp/horyd:field+(NUMBER+band(thc+5a46634))")
-        self.assertEqual(url.username,None)
+        self.assertEqual(url.username,'')
         url=SmartURL("http://argouml-stats.tigris.org")
-        self.assertEqual(url.username,None)  
+        self.assertEqual(url.username,'')  
 
     def test_password(self):
-        """ SmartUrl returns password if specified, None else."""
+        """ SmartUrl returns password if specified, empty string else."""
         url=SmartURL("http://user:heslo@argouml-stats.tigris.org:3516")
         self.assertEqual(url.password,"heslo")
         url=SmartURL("/cgi-bin/query/h?pp/horyd:field+(NUMBER+band(thc+5a46634))")
-        self.assertEqual(url.password,None)
+        self.assertEqual(url.password,'')
         url=SmartURL("http://argouml-stats.tigris.org")
-        self.assertEqual(url.password,None)  
+        self.assertEqual(url.password,'')  
 
 class LinklistTest(unittest.TestCase):
     
@@ -284,7 +284,8 @@ class LinklistTest(unittest.TestCase):
         settings=Settings()
         self.linklistInstance.debug=debugMock
         self.linklistInstance.settings=settings
-        self.linklistPath="/media/KINGSTON/Sumid/linklist/prelinklist25.txt"
+        #self.linklistPath="/media/KINGSTON/Sumid/linklist/prelinklist25.txt"
+        self.linklistPath="https://raw.github.com/xhujerr/Sumid/master/linklist/prelinklist25.txt"
         
     def tearDown(self):
         self.linklistInstance=None
@@ -301,18 +302,21 @@ class LinklistTest(unittest.TestCase):
         """ nextRaw returns a line without any modification, when linklist is set correctly. """
         #linklistPath="/media/KINGSTON/Sumid/linklist/prelinklist25.txt"
         # First peek what is first line of the linklist.
-        linklistFile=file(self.linklistPath,'r')
+        #linklistFile=file(self.linklistPath,'r') # 027 linklistpath here changed to url
+        linklistFile=urllib2.urlopen(self.linklistPath)
         firstLine=linklistFile.readline()
         linklistFile.close()
         # Set-up URL linklist for test.
-        linklistURL="file://%s"%(self.linklistPath)
+        #linklistURL="file://%s"%(self.linklistPath) # 027 linklistpath here changed to url
+        linklistURL=self.linklistPath
         linklistFile=urllib2.urlopen(linklistURL)
         self.linklistInstance.connectLinklistFile(linklistFile)
         line=self.linklistInstance.nextRaw()
         # The URL test.
         self.assertEqual(firstLine,line)
         # Set-up file linklist for test.
-        linklistFile=file(self.linklistPath,'r')
+        #linklistFile=file(self.linklistPath,'r')  # 027 linklistpath here changed to url
+        linklistFile=urllib2.urlopen(linklistURL)
         self.linklistInstance.connectLinklistFile(linklistFile)
         line=self.linklistInstance.nextRaw()
         #The file test
@@ -328,13 +332,14 @@ class LinklistTest(unittest.TestCase):
     def test_connectLinklistFile_correctInput(self):
         """ If the input of connectLinklistFile() is a file-like object, then self.linklist link to it is created. """
         #linklistPath="/media/KINGSTON/Sumid/linklist/prelinklist25.txt"
-        linklistURL="file://%s"%(self.linklistPath)
+        #linklistURL="file://%s"%(self.linklistPath)
+        linklistURL=self.linklistPath # 027 Linklist path changed to github url
         linklistFile=urllib2.urlopen(linklistURL)
         self.linklistInstance.connectLinklistFile(linklistFile)
         self.assertEqual(self.linklistInstance.linklist.geturl(),linklistURL)
-        linklistFile=file(self.linklistPath,'r')
+        #linklistFile=file(self.linklistPath,'r') # 027 repeat .. why??
         self.linklistInstance.connectLinklistFile(linklistFile)
-        self.assertEqual(self.linklistInstance.linklist.name,self.linklistPath)
+        self.assertEqual(self.linklistInstance.linklist.url,self.linklistPath)
 
 class TextLinklistParserTest(unittest.TestCase):
     
@@ -344,7 +349,7 @@ class TextLinklistParserTest(unittest.TestCase):
         settings=Settings()
         self.textLinklistParserInstance.debug=debugMock
         self.textLinklistParserInstance.settings=settings
-        self.linklistPath="/media/KINGSTON/Sumid/linklist/prelinklist26.txt"
+        self.linklistPath="/home/sumid.linklist/prelinklist26.txt"
         
     def tearDown(self):
         self.textLinklistParserInstance=None

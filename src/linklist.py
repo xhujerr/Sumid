@@ -16,13 +16,14 @@ Version Bookkeeping
 
 # Setup path for imports
 import sys
-sys.path.append('../thirdparty/') # For furl.
+sys.path.append('../thirdparty/gruns') # For furl.
 
 __version__="0.27"
 
 from miscutil import NotImplementedYetError, Shared, Debug, Settings
 from Queue import Queue
-from furl import furl
+#from furl import furl
+import furl
 import urlparse, urllib
 from bz2 import BZ2File # 027 Only because of the check in connectLinklist.
 # 026 Although I actually use urllib2 the needed addinfourl is defined in urllib and imported to urllib2.
@@ -257,7 +258,7 @@ class TextLinklistParser(AbstractLinklistParser):
         return self.linklistAdaptorInstance.EOF
 
             
-class SmartURL(furl): # Class added in 026.
+class SmartURL(furl.furl): # Class added in 026.
     
     _composed=""
     #_splitted=[] # 026 Do the split everytime is safer.
@@ -293,10 +294,11 @@ class SmartURL(furl): # Class added in 026.
         composed = "/".join(value)
         result = self.Composed=composed
         return result
-    
+
+    # 027 Use .url instead    
     @property
     def Composed(self): return self._composed
-    
+
     @Composed.setter
     def Composed(self,url):
         if self.isValid(url): self._composed = url
@@ -308,6 +310,7 @@ class SmartURL(furl): # Class added in 026.
     @property
     def Seed(self): return self._seed   
     
+    # use .path.isabsolute instead.
     def isAbsolute(self):
         if self.Composed.find("://") >0 : return True
         else: return False
@@ -347,6 +350,7 @@ class SmartURL(furl): # Class added in 026.
         Result is 2-dim array. First dim is scheme, netloc, path, params, query, fragment.
         """
         urlParseResult=self.urlparse(self._composed)
+        #urlParseResult=[self.scheme, self.netloc, self.pathstr, self.query.params, self.querystr, self.fragmentstr]
         result=[]
         for urlPart in urlParseResult:
             result.append(self.multiSeparatorSplit(urlPart, urlWordsSeparators))
@@ -357,56 +361,30 @@ class SmartURL(furl): # Class added in 026.
     def urlparse(self, url, scheme='', allow_fragments=True):
         """ Only calls urlparse.urlparse() and adds result to self. """
         scheme, netloc, path, params, query, fragment = urlparse.urlparse(url, scheme, allow_fragments)
+        #scheme, netloc, path, params, query, fragment = furl.urlsplit(url) # 027 won't be that easy.
+        '''
         self._scheme=scheme
         self._netloc=netloc
         self._path=path
         self._params=params
         self._query=query
         self._fragment=fragment
+        '''
         return scheme, netloc, path, params, query, fragment
+        # Doesn't work: https://github.com/gruns/furl/issues/15
+        #return self.scheme, self.netloc, self.pathstr, str(self.query.params), self.querystr, self.fragmentstr
                 
     # 026 urlparse() product properties if not exist, calls self.urlparse.
     # 026 properties are named with lowercase to maintain compatibility with urlparse module.
     
-    # some kind of backwards compatibility
+    # 027 some kind of backwards compatibility
     @property
     def hostname(self):
         return self.host
     
-    '''
-    @property
-    def scheme(self):
-        if not hasattr(self,"_scheme"): self.urlparse(self._composed)
-        return self._scheme
-    '''
-    '''
-    @property
-    def netloc(self):    
-        if not hasattr(self,"_netloc"): self.urlparse(self._composed)
-        return self._netloc
-    '''
-    '''
-    @property
-    def path(self):
-        if not hasattr(self,"_path"): self.urlparse(self._composed)
-        return self._path
+    # 027 stringified path is .pathstr (inherited from furl)
+    # 027 stringified query is .querystr (inherited from furl)
 
-    @property
-    def params(self):
-        if not hasattr(self,"_params"): self.urlparse(self._composed)
-        return self._params
-
-    @property
-    def query(self):
-        if not hasattr(self,"_query"): self.urlparse(self._composed)
-        return self._query
-
-    @property
-    def fragment(self):
-        # 026 Since character # is forbidden in SmartURL this shall never happen.
-        if not hasattr(self,"_fragment"): self.urlparse(self._composed)
-        return self._fragment
-'''
 
         
 class History(Shared):
